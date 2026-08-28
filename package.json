@@ -1,0 +1,29 @@
+{
+  "name": "ai-context-buyer-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Context-Buyer Platform — мультиагентная SaaS для контекстной рекламы",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run build -w @context-buyer/connectors && npm run build -w @context-buyer/agents && npm run start:dev -w api",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w @context-buyer/shared-types && npm run build -w @context-buyer/connectors && npm run build -w @context-buyer/agents && npm run build -w api && npm run build -w web",
+    "lint": "npm run lint -w api && npm run lint -w web",
+    "test": "npm run test -w api",
+    "test:e2e": "npm run build -w @context-buyer/connectors && npm run build -w @context-buyer/agents && npm run build -w api && playwright test -c e2e/playwright.config.ts",
+    "qa:semantic": "npm run build -w @context-buyer/connectors && npm run build -w @context-buyer/agents && npm run qa:semantic -w api --",
+    "db:migrate": "npm run prisma:migrate -w api",
+    "db:generate": "npm run prisma:generate -w api"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0"
+  }
+}

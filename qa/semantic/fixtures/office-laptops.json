@@ -1,0 +1,93 @@
+{
+  "id": "office-laptops",
+  "title": "Ноутбуки для офиса (E2E-магазин)",
+  "provenance": "Бриф — поля, которые человек вводит в e2e/platform.spec.ts. Эталонные ключи = эта человеческая фраза УТП + те же шаблоны MockKeywordIdeasProvider, что уже есть в коде. Отдельные «красивые» запросы вроде «купить ноутбук» не добавлялись.",
+  "brief": {
+    "website_url": "https://e2e-shop.example",
+    "geo": ["RU-MOW"],
+    "usp": ["Быстрая поставка ноутбуков для офиса"],
+    "target_audience": [{ "segment": "IT-отделы компаний" }],
+    "global_negative_keywords": ["бесплатно", "торрент"]
+  },
+  "gold": {
+    "keywords": [
+      {
+        "phrase": "быстрая поставка ноутбуков для офиса",
+        "intent": "hot",
+        "source": "e2e/platform.spec.ts (поле УТП)"
+      },
+      {
+        "phrase": "купить быстрая поставка ноутбуков для офиса",
+        "intent": "hot",
+        "source": "packages/connectors/src/keyword-ideas.ts: «купить {seed}» на УТП из e2e"
+      },
+      {
+        "phrase": "быстрая поставка ноутбуков для офиса цена",
+        "intent": "hot",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена» на УТП из e2e"
+      },
+      {
+        "phrase": "быстрая поставка ноутбуков для офиса заказать",
+        "intent": "hot",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать» на УТП из e2e"
+      },
+      {
+        "phrase": "быстрая поставка ноутбуков для офиса обзор",
+        "intent": "warm",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор» на УТП из e2e"
+      },
+      {
+        "phrase": "быстрая поставка ноутбуков для офиса отзывы",
+        "intent": "warm",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} отзывы» на УТП из e2e"
+      },
+      {
+        "phrase": "быстрая поставка ноутбуков для офиса официальный сайт",
+        "intent": "navigational",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} официальный сайт» на УТП из e2e"
+      }
+    ],
+    "global_negatives": [
+      {
+        "phrase": "бесплатно",
+        "source": "e2e/platform.spec.ts (минус-слова формы)"
+      },
+      {
+        "phrase": "торрент",
+        "source": "e2e/platform.spec.ts (минус-слова формы)"
+      }
+    ]
+  },
+  "irrelevant": [
+    {
+      "phrase": "ремонт",
+      "match": "token",
+      "reason": "мок Wordstat добавляет «{seed} ремонт» к любой маске, включая ЦА",
+      "source": "packages/connectors/src/keyword-ideas.ts"
+    },
+    {
+      "phrase": "бесплатно",
+      "match": "token",
+      "reason": "минус из e2e-формы",
+      "source": "e2e/platform.spec.ts"
+    },
+    {
+      "phrase": "торрент",
+      "match": "token",
+      "reason": "минус из e2e-формы",
+      "source": "e2e/platform.spec.ts"
+    },
+    {
+      "phrase": "it-отделы",
+      "match": "contains",
+      "reason": "сегмент ЦА из e2e, не поисковый запрос",
+      "source": "e2e/platform.spec.ts target_audience"
+    },
+    {
+      "phrase": "e2e-shop",
+      "match": "contains",
+      "reason": "хост website_url из e2e, masksFromBrief делает из него маску",
+      "source": "e2e/platform.spec.ts website; packages/agents/src/semantic/heuristics.ts"
+    }
+  ]
+}

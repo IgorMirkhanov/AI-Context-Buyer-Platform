@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+/* Design tokens — AI Context-Buyer Platform
+   Neutral chrome (zinc). Status: draft/archived, review/publishing,
+   paused, active, alert, success, danger, info.
+   Radius 10px, card padding 16px, primary = --accent (white-label).
+*/
+
+:root {
+  --bg: #f4f5f7;
+  --bg-elevated: #ffffff;
+  --fg: #18181b;
+  --fg-muted: #71717a;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --accent: #18181b;
+  --accent-fg: #fafafa;
+  --ring: #a1a1aa;
+  --radius: 10px;
+  --space: 16px;
+  --font: var(--font-geist-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --status-draft-bg: #f4f4f5;
+  --status-draft-fg: #3f3f46;
+  --status-review-bg: #eff6ff;
+  --status-review-fg: #1d4ed8;
+  --status-paused-bg: #fff7ed;
+  --status-paused-fg: #c2410c;
+  --status-active-bg: #ecfdf5;
+  --status-active-fg: #047857;
+  --status-alert-bg: #fffbeb;
+  --status-alert-fg: #b45309;
+  --status-alert-border: #fde68a;
+  --status-success-bg: #ecfdf5;
+  --status-success-fg: #047857;
+  --status-success-border: #a7f3d0;
+  --status-danger-bg: #fef2f2;
+  --status-danger-fg: #b91c1c;
+  --status-danger-border: #fecaca;
+  --status-info-bg: #eff6ff;
+  --status-info-fg: #1d4ed8;
+  --status-info-border: #bfdbfe;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --font-sans: var(--font);
+  --font-mono: var(--font-mono);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+}
+
+.ui-input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--fg);
+}
+.ui-input:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ui-table {
+  width: 100%;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.ui-table thead {
+  color: var(--fg-muted);
+}
+.ui-table th,
+.ui-table td {
+  padding: 0.5rem 0.5rem 0.5rem 0;
+}
+.ui-table tbody tr[data-clickable] {
+  cursor: pointer;
+}
+.ui-table tbody tr[data-clickable]:hover {
+  background: #fafafa;
+}
+
+.term-hint {
+  position: relative;
+  display: inline-block;
+  margin-left: 0.2rem;
+  vertical-align: super;
+}
+.term-hint-mark {
+  display: inline-flex;
+  height: 1rem;
+  width: 1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--fg-muted);
+  cursor: help;
+}
+.term-hint-bubble {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: 1.25rem;
+  width: 16rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--fg);
+  box-shadow: 0 8px 24px rgba(24, 24, 27, 0.12);
+}
+.term-hint:hover .term-hint-bubble,
+.term-hint:focus .term-hint-bubble,
+.term-hint:focus-within .term-hint-bubble {
+  display: block;
+}

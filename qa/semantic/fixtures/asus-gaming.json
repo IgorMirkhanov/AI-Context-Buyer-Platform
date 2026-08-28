@@ -1,0 +1,132 @@
+{
+  "id": "asus-gaming",
+  "title": "Игровые ноутбуки Asus",
+  "provenance": "Эталон — только фразы, уже записанные людьми в репозитории (docs/03 §3, semantic-pipeline.spec) плюс механические шаблоны MockKeywordIdeasProvider, применённые к человеческому УТП. Новых ключей от LLM нет.",
+  "brief": {
+    "website_url": "https://asus-gaming.example",
+    "geo": ["RU-MOW"],
+    "usp": ["игровые ноутбуки asus", "гарантия 3 года"],
+    "target_audience": [{ "segment": "геймеры 18-30" }],
+    "global_negative_keywords": ["бесплатно", "скачать"],
+    "price_segment": "premium"
+  },
+  "gold": {
+    "keywords": [
+      {
+        "phrase": "купить игровой ноутбук asus",
+        "intent": "hot",
+        "cluster_hint": "Игровые ноутбуки Asus",
+        "source": "docs/03_DATA_MODELS.md §3"
+      },
+      {
+        "phrase": "ноутбук asus rog обзор",
+        "intent": "warm",
+        "cluster_hint": "Игровые ноутбуки Asus",
+        "source": "docs/03_DATA_MODELS.md §3"
+      },
+      {
+        "phrase": "игровые ноутбуки asus",
+        "intent": "hot",
+        "cluster_hint": "Игровые ноутбуки Asus",
+        "source": "apps/api/src/semantic/semantic-pipeline.spec.ts (USP)"
+      },
+      {
+        "phrase": "купить ноутбук asus",
+        "intent": "hot",
+        "source": "apps/api/src/semantic/semantic-pipeline.spec.ts"
+      },
+      {
+        "phrase": "ноутбук asus обзор",
+        "intent": "warm",
+        "source": "apps/api/src/semantic/semantic-pipeline.spec.ts"
+      },
+      {
+        "phrase": "купить asus",
+        "intent": "hot",
+        "source": "apps/api/src/semantic/semantic-pipeline.spec.ts (finalizeStep)"
+      },
+      {
+        "phrase": "купить игровые ноутбуки asus",
+        "intent": "hot",
+        "source": "packages/connectors/src/keyword-ideas.ts: шаблон «купить {seed}» на USP spec"
+      },
+      {
+        "phrase": "игровые ноутбуки asus цена",
+        "intent": "hot",
+        "source": "packages/connectors/src/keyword-ideas.ts: шаблон «{seed} цена» на USP spec"
+      },
+      {
+        "phrase": "игровые ноутбуки asus заказать",
+        "intent": "hot",
+        "source": "packages/connectors/src/keyword-ideas.ts: шаблон «{seed} заказать» на USP spec"
+      },
+      {
+        "phrase": "игровые ноутбуки asus обзор",
+        "intent": "warm",
+        "source": "packages/connectors/src/keyword-ideas.ts: шаблон «{seed} обзор» на USP spec"
+      },
+      {
+        "phrase": "игровые ноутбуки asus отзывы",
+        "intent": "warm",
+        "source": "packages/connectors/src/keyword-ideas.ts: шаблон «{seed} отзывы» на USP spec"
+      },
+      {
+        "phrase": "игровые ноутбуки asus официальный сайт",
+        "intent": "navigational",
+        "source": "packages/connectors/src/keyword-ideas.ts: шаблон «{seed} официальный сайт» на USP spec"
+      }
+    ],
+    "global_negatives": [
+      {
+        "phrase": "бесплатно",
+        "source": "docs/03_DATA_MODELS.md §3 + semantic-pipeline.spec.ts"
+      },
+      {
+        "phrase": "скачать",
+        "source": "apps/api/src/semantic/semantic-pipeline.spec.ts"
+      },
+      {
+        "phrase": "б/у",
+        "source": "docs/03_DATA_MODELS.md §3"
+      }
+    ]
+  },
+  "irrelevant": [
+    {
+      "phrase": "ремонт",
+      "match": "token",
+      "reason": "сервисный интент; в брифе docs/03 это глобальный минус, мок Wordstat всё равно добавляет «{seed} ремонт»",
+      "source": "docs/03_DATA_MODELS.md §2 exclusions; packages/connectors/src/keyword-ideas.ts"
+    },
+    {
+      "phrase": "бесплатно",
+      "match": "token",
+      "reason": "минус из брифа; мок ставит frequency 0, но маска может просочиться иначе",
+      "source": "docs/03_DATA_MODELS.md §2 exclusions"
+    },
+    {
+      "phrase": "скачать",
+      "match": "token",
+      "reason": "минус из брифа spec",
+      "source": "apps/api/src/semantic/semantic-pipeline.spec.ts"
+    },
+    {
+      "phrase": "торрент",
+      "match": "token",
+      "reason": "минус из docs/03 exclusions",
+      "source": "docs/03_DATA_MODELS.md §2 exclusions"
+    },
+    {
+      "phrase": "геймеры",
+      "match": "token",
+      "reason": "сегмент ЦА из spec, не поисковый запрос",
+      "source": "apps/api/src/semantic/semantic-pipeline.spec.ts target_audience"
+    },
+    {
+      "phrase": "asus-gaming",
+      "match": "contains",
+      "reason": "хост website_url, masksFromBrief режет домен в маску",
+      "source": "packages/agents/src/semantic/heuristics.ts masksFromBrief"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+export const OPTIMIZATION_PLAN_JSON_SCHEMA = {
+  $id: "https://context-buyer.local/schemas/optimization-plan.json",
+  type: "object",
+  additionalProperties: false,
+  required: ["period", "recommendations"],
+  properties: {
+    period: {
+      type: "object",
+      additionalProperties: false,
+      required: ["from", "to"],
+      properties: {
+        from: { type: "string", minLength: 1 },
+        to: { type: "string", minLength: 1 },
+      },
+    },
+    recommendations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "type",
+          "campaign_id",
+          "campaign_external_id",
+          "evidence",
+          "action",
+          "rationale",
+        ],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["pause_campaign", "reduce_budget", "add_negative"],
+          },
+          campaign_id: { type: "string", minLength: 1 },
+          campaign_external_id: { type: "string", minLength: 1 },
+          evidence: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "impressions",
+              "clicks",
+              "spend",
+              "conversions",
+              "ctr",
+              "cpc",
+              "cpl",
+              "target_cpl",
+            ],
+            properties: {
+              impressions: { type: "number", minimum: 0 },
+              clicks: { type: "number", minimum: 0 },
+              spend: { type: "number", minimum: 0 },
+              conversions: { type: "number", minimum: 0 },
+              ctr: { type: "number" },
+              cpc: { type: "number" },
+              cpl: { type: ["number", "null"] },
+              target_cpl: { type: "number" },
+              phrase: { type: "string" },
+              current_budget: { type: "number" },
+              new_budget: { type: "number" },
+              wasted_clicks: { type: "number" },
+              wasted_spend: { type: "number" },
+            },
+          },
+          action: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              pause: { type: "boolean" },
+              budget_daily: { type: "number" },
+              negative_phrases: {
+                type: "array",
+                items: { type: "string", minLength: 1 },
+              },
+            },
+          },
+          rationale: { type: "string", minLength: 1 },
+        },
+      },
+    },
+  },
+};

@@ -1,0 +1,602 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  owner
+  member
+  client
+}
+
+enum ProjectStatus {
+  draft
+  active
+  archived
+  disconnected
+}
+
+enum AdPlatform {
+  yandex_direct
+  google_ads
+}
+
+enum AiProvider {
+  anthropic
+  openai
+}
+
+enum AiProviderCredentialStatus {
+  unverified
+  valid
+  invalid
+}
+
+model Organization {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  plan         String    @default("free")
+  slug         String?   @unique
+  brandingJson Json?     @map("branding_json")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  users        User[]
+  projects     Project[]
+  aiProviderCredentials AiProviderCredential[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  email          String          @unique
+  passwordHash   String          @map("password_hash")
+  role           UserRole        @default(owner)
+  termsAcceptedAt DateTime?      @map("terms_accepted_at")
+  beginnerMode    Boolean        @default(true) @map("beginner_mode")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectAccess  ProjectAccess[]
+  writeAudits    AdWriteAudit[]
+  favorites      ProjectFavorite[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Project {
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String        @map("organization_id") @db.Uuid
+  name            String
+  status          ProjectStatus @default(draft)
+  primaryPlatform AdPlatform    @map("primary_platform")
+  websiteUrl      String?       @map("website_url")
+  autopilotEnabled Boolean      @default(false) @map("autopilot_enabled")
+  autopilotEnabledAt DateTime?  @map("autopilot_enabled_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credentials     AdPlatformCredential[]
+  briefs          ProjectBrief[]
+  semanticClusters SemanticCluster[]
+  semanticKeywords SemanticKeyword[]
+  agentTasks      AgentTask[]
+  llmCallLogs     LlmCallLog[]
+  keywordEmbeddings KeywordEmbedding[]
+  adCreatives       AdCreative[]
+  validationIssues  ValidationIssue[]
+  campaignDrafts    CampaignDraft[]
+  campaigns         Campaign[]
+  performanceSnapshots PerformanceSnapshot[]
+  optimizationRecommendations OptimizationRecommendation[]
+  attributionCredentials AttributionCredential[]
+  conversionEvents ConversionEvent[]
+  mediaAssets       MediaAsset[]
+  clientAccess      ProjectAccess[]
+  opsAlerts         OpsAlert[]
+  writeAudits       AdWriteAudit[]
+  favorites         ProjectFavorite[]
+
+  @@index([organizationId])
+  @@map("projects")
+}
+
+model ProjectAccess {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId])
+  @@map("project_access")
+}
+
+model ProjectFavorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([userId])
+  @@index([projectId])
+  @@map("project_favorites")
+}
+
+model AdPlatformCredential {
+  id                     String      @id @default(uuid()) @db.Uuid
+  projectId              String      @map("project_id") @db.Uuid
+  platform               AdPlatform
+  accessTokenEncrypted   String      @map("access_token_encrypted")
+  refreshTokenEncrypted  String?     @map("refresh_token_encrypted")
+  expiresAt              DateTime?   @map("expires_at")
+  scopes                 String?
+  externalAccountId      String?     @map("external_account_id")
+  createdAt              DateTime    @default(now()) @map("created_at")
+  project                Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, platform])
+  @@index([projectId])
+  @@map("ad_platform_credentials")
+}
+
+model ProjectBrief {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  version     Int
+  payloadJson Json     @map("payload_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_briefs")
+}
+
+enum KeywordIntent {
+  hot
+  warm
+  navigational
+}
+
+enum ClusterCategory {
+  brand
+  feature
+  geo
+  generic
+}
+
+enum AgentType {
+  semantic
+  copywriting
+  validation
+  campaign_builder
+  reporting
+  optimization
+  media
+}
+
+enum AgentTaskStatus {
+  pending
+  running
+  done
+  failed
+}
+
+model SemanticCluster {
+  id        String          @id @default(uuid()) @db.Uuid
+  projectId String          @map("project_id") @db.Uuid
+  name      String
+  category  ClusterCategory
+  createdAt DateTime        @default(now()) @map("created_at")
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keywords  SemanticKeyword[]
+  creatives AdCreative[]
+  mediaAssets MediaAsset[]
+
+  @@index([projectId])
+  @@map("semantic_clusters")
+}
+
+model SemanticKeyword {
+  id         String          @id @default(uuid()) @db.Uuid
+  projectId  String          @map("project_id") @db.Uuid
+  phrase     String
+  frequency  Int
+  intent     KeywordIntent
+  clusterId  String?         @map("cluster_id") @db.Uuid
+  isNegative Boolean         @default(false) @map("is_negative")
+  source     String
+  createdAt  DateTime        @default(now()) @map("created_at")
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cluster    SemanticCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([clusterId])
+  @@map("semantic_keywords")
+}
+
+model AgentTask {
+  id         String          @id @default(uuid()) @db.Uuid
+  projectId  String          @map("project_id") @db.Uuid
+  agentType  AgentType       @map("agent_type")
+  status     AgentTaskStatus
+  inputRef   String?         @map("input_ref")
+  outputRef  String?         @map("output_ref")
+  error      String?
+  startedAt  DateTime?       @map("started_at")
+  finishedAt DateTime?       @map("finished_at")
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("agent_tasks")
+}
+
+model LlmCallLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  projectId    String    @map("project_id") @db.Uuid
+  agentType    AgentType @map("agent_type")
+  step         String
+  model        String
+  prompt       String
+  response     String
+  inputTokens  Int       @map("input_tokens")
+  outputTokens Int       @map("output_tokens")
+  costUsd      Decimal   @map("cost_usd") @db.Decimal(12, 6)
+  latencyMs    Int       @map("latency_ms")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("llm_call_logs")
+}
+
+model KeywordEmbedding {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  phrase    String
+  embedding Json
+  createdAt DateTime @default(now()) @map("created_at")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("keyword_embeddings")
+}
+
+enum CreativeType {
+  headline1
+  headline2
+  description
+  sitelink
+  callout
+}
+
+enum CreativeStatus {
+  draft
+  edited
+  approved
+}
+
+enum IssueLevel {
+  critical
+  warning
+}
+
+model PlatformLimit {
+  id          String     @id @default(uuid()) @db.Uuid
+  platform    AdPlatform
+  elementType String     @map("element_type")
+  maxLength   Int        @map("max_length")
+  maxCount    Int        @map("max_count")
+
+  @@unique([platform, elementType])
+  @@map("platform_limits")
+}
+
+model AdCreative {
+  id        String         @id @default(uuid()) @db.Uuid
+  projectId String         @map("project_id") @db.Uuid
+  clusterId String         @map("cluster_id") @db.Uuid
+  type      CreativeType
+  text      String
+  status    CreativeStatus @default(draft)
+  abGroup   String         @map("ab_group")
+  createdAt DateTime       @default(now()) @map("created_at")
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cluster   SemanticCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  issues    ValidationIssue[]
+
+  @@index([projectId])
+  @@index([clusterId])
+  @@map("ad_creatives")
+}
+
+model ValidationIssue {
+  id         String      @id @default(uuid()) @db.Uuid
+  projectId  String      @map("project_id") @db.Uuid
+  creativeId String?     @map("creative_id") @db.Uuid
+  level      IssueLevel
+  code       String
+  message    String
+  autoFixed  Boolean     @default(false) @map("auto_fixed")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creative   AdCreative? @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("validation_issues")
+}
+
+enum CampaignDraftStatus {
+  pending_approval
+  publishing
+  published
+  failed
+}
+
+enum LiveCampaignStatus {
+  paused
+  active
+  archived
+}
+
+model CampaignDraft {
+  id             String               @id @default(uuid()) @db.Uuid
+  projectId      String               @map("project_id") @db.Uuid
+  structureJson  Json                 @map("structure_json")
+  status         CampaignDraftStatus  @default(pending_approval)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaigns      Campaign[]
+
+  @@index([projectId])
+  @@map("campaign_drafts")
+}
+
+model Campaign {
+  id                   String              @id @default(uuid()) @db.Uuid
+  projectId            String              @map("project_id") @db.Uuid
+  draftId              String?             @map("draft_id") @db.Uuid
+  externalCampaignId   String              @map("external_campaign_id")
+  platform             AdPlatform
+  status               LiveCampaignStatus  @default(paused)
+  budget               Decimal?            @db.Decimal(12, 2)
+  targetingJson        Json?               @map("targeting_json")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  draft                CampaignDraft?      @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  snapshots            PerformanceSnapshot[]
+  recommendations      OptimizationRecommendation[]
+  conversionEvents     ConversionEvent[]
+
+  @@index([projectId])
+  @@map("campaigns")
+}
+
+model PerformanceSnapshot {
+  id                 String   @id @default(uuid()) @db.Uuid
+  projectId          String   @map("project_id") @db.Uuid
+  campaignId         String   @map("campaign_id") @db.Uuid
+  adGroupExternalId  String   @default("") @map("ad_group_external_id")
+  adGroupName        String?  @map("ad_group_name")
+  date               DateTime @db.Date
+  impressions        Int
+  clicks             Int
+  ctr                Decimal  @db.Decimal(10, 4)
+  cpc                Decimal  @db.Decimal(14, 4)
+  conversions        Int
+  cpl                Decimal? @db.Decimal(14, 4)
+  spend              Decimal  @db.Decimal(14, 4)
+  createdAt          DateTime @default(now()) @map("created_at")
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, adGroupExternalId, date])
+  @@index([projectId])
+  @@map("performance_snapshots")
+}
+
+enum OptimizationRecType {
+  pause_campaign
+  reduce_budget
+  add_negative
+}
+
+enum OptimizationRecStatus {
+  proposed
+  approved
+  rejected
+  applied
+  failed
+}
+
+model OptimizationRecommendation {
+  id           String                 @id @default(uuid()) @db.Uuid
+  projectId    String                 @map("project_id") @db.Uuid
+  campaignId   String                 @map("campaign_id") @db.Uuid
+  type         OptimizationRecType
+  status       OptimizationRecStatus  @default(proposed)
+  evidenceJson Json                   @map("evidence_json")
+  actionJson   Json                   @map("action_json")
+  rationale    String
+  error        String?
+  appliedBy    String?                @map("applied_by")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  decidedAt    DateTime?              @map("decided_at")
+  appliedAt    DateTime?              @map("applied_at")
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaign     Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([campaignId])
+  @@map("optimization_recommendations")
+}
+
+enum AttributionProvider {
+  bitrix24
+  amocrm
+  calltouch
+  roistat
+}
+
+enum ConversionEventType {
+  lead
+  deal
+  call
+}
+
+model AttributionCredential {
+  id                     String               @id @default(uuid()) @db.Uuid
+  projectId              String               @map("project_id") @db.Uuid
+  provider               AttributionProvider
+  tokenEncrypted         String               @map("token_encrypted")
+  extraEncrypted         String?              @map("extra_encrypted")
+  inboundSecretEncrypted String               @map("inbound_secret_encrypted")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  project                Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, provider])
+  @@index([projectId])
+  @@map("attribution_credentials")
+}
+
+model ConversionEvent {
+  id           String              @id @default(uuid()) @db.Uuid
+  projectId    String              @map("project_id") @db.Uuid
+  campaignId   String?             @map("campaign_id") @db.Uuid
+  provider     AttributionProvider
+  externalId   String              @map("external_id")
+  type         ConversionEventType
+  occurredAt   DateTime            @map("occurred_at")
+  amount       Decimal?            @db.Decimal(14, 4)
+  utmCampaign  String?             @map("utm_campaign")
+  phoneHash    String?             @map("phone_hash")
+  title        String
+  createdAt    DateTime            @default(now()) @map("created_at")
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  campaign     Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, provider, externalId])
+  @@index([projectId])
+  @@map("conversion_events")
+}
+
+enum MediaKind {
+  image
+  video
+}
+
+enum MediaAssetStatus {
+  generated
+  approved
+  rejected
+}
+
+model MediaAsset {
+  id         String           @id @default(uuid()) @db.Uuid
+  projectId  String           @map("project_id") @db.Uuid
+  clusterId  String?          @map("cluster_id") @db.Uuid
+  kind       MediaKind
+  provider   String
+  prompt     String
+  storageKey String           @map("storage_key")
+  mimeType   String           @map("mime_type")
+  width      Int
+  height     Int
+  durationMs Int?             @map("duration_ms")
+  status     MediaAssetStatus @default(generated)
+  createdAt  DateTime         @default(now()) @map("created_at")
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cluster    SemanticCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([clusterId])
+  @@map("media_assets")
+}
+
+enum OpsAlertKind {
+  pipeline_failed
+  oauth_expiring
+  oauth_expired
+  platform_rate_limit
+}
+
+model OpsAlert {
+  id              String       @id @default(uuid()) @db.Uuid
+  projectId       String       @map("project_id") @db.Uuid
+  kind            OpsAlertKind
+  title           String
+  detail          String?
+  acknowledgedAt  DateTime?    @map("acknowledged_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, kind])
+  @@map("ops_alerts")
+}
+
+enum AdWriteActor {
+  user
+  autopilot
+  system
+}
+
+enum AdWriteAction {
+  create_campaign
+  create_ad_groups
+  create_ads
+  add_keywords
+  add_negative_keywords
+  set_budget
+  pause_campaign
+}
+
+enum AdWriteStatus {
+  success
+  failed
+}
+
+model AdWriteAudit {
+  id          String        @id @default(uuid()) @db.Uuid
+  projectId   String        @map("project_id") @db.Uuid
+  userId      String?       @map("user_id") @db.Uuid
+  actor       AdWriteActor
+  action      AdWriteAction
+  platform    AdPlatform
+  status      AdWriteStatus
+  summaryJson Json          @map("summary_json")
+  error       String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@map("ad_write_audit")
+}
+
+model AiProviderCredential {
+  id              String                       @id @default(uuid()) @db.Uuid
+  organizationId  String                       @map("organization_id") @db.Uuid
+  provider        AiProvider
+  apiKeyEncrypted String                       @map("api_key_encrypted")
+  status          AiProviderCredentialStatus   @default(unverified)
+  lastVerifiedAt  DateTime?                    @map("last_verified_at")
+  createdAt       DateTime                     @default(now()) @map("created_at")
+  updatedAt       DateTime                     @updatedAt @map("updated_at")
+  organization    Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+  @@map("ai_provider_credentials")
+}

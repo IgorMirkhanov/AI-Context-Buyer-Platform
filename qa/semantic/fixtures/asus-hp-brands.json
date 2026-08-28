@@ -1,0 +1,109 @@
+{
+  "id": "asus-hp-brands",
+  "title": "Два бренда: Asus ROG и HP Omen",
+  "provenance": "Кластеры и ключи — из copywriting-pipeline.spec.ts и campaign-builder.spec.ts (человеческие фикстуры тестов). УТП = названия этих кластеров. Механические шаблоны мока Wordstat наложены только на эти две человеческие строки.",
+  "brief": {
+    "website_url": "https://asus-gaming.example",
+    "geo": ["RU-MOW"],
+    "usp": ["Asus ROG", "HP Omen"],
+    "target_audience": [{ "segment": "геймеры 18-30" }],
+    "global_negative_keywords": ["бесплатно"],
+    "price_segment": "premium"
+  },
+  "gold": {
+    "keywords": [
+      {
+        "phrase": "asus rog",
+        "intent": "hot",
+        "cluster_hint": "Asus ROG",
+        "source": "apps/api/src/creatives/copywriting-pipeline.spec.ts (имя кластера)"
+      },
+      {
+        "phrase": "купить asus rog",
+        "intent": "hot",
+        "cluster_hint": "Asus ROG",
+        "source": "apps/api/src/creatives/copywriting-pipeline.spec.ts; apps/api/src/campaigns/campaign-builder.spec.ts"
+      },
+      {
+        "phrase": "asus rog цена",
+        "intent": "hot",
+        "cluster_hint": "Asus ROG",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена» на имя кластера"
+      },
+      {
+        "phrase": "asus rog заказать",
+        "intent": "hot",
+        "cluster_hint": "Asus ROG",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать»"
+      },
+      {
+        "phrase": "asus rog обзор",
+        "intent": "warm",
+        "cluster_hint": "Asus ROG",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор»"
+      },
+      {
+        "phrase": "hp omen",
+        "intent": "hot",
+        "cluster_hint": "HP Omen",
+        "source": "apps/api/src/creatives/copywriting-pipeline.spec.ts (имя кластера)"
+      },
+      {
+        "phrase": "купить hp omen",
+        "intent": "hot",
+        "cluster_hint": "HP Omen",
+        "source": "apps/api/src/creatives/copywriting-pipeline.spec.ts"
+      },
+      {
+        "phrase": "hp omen цена",
+        "intent": "hot",
+        "cluster_hint": "HP Omen",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена»"
+      },
+      {
+        "phrase": "hp omen заказать",
+        "intent": "hot",
+        "cluster_hint": "HP Omen",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать»"
+      },
+      {
+        "phrase": "hp omen обзор",
+        "intent": "warm",
+        "cluster_hint": "HP Omen",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор»"
+      }
+    ],
+    "global_negatives": [
+      {
+        "phrase": "бесплатно",
+        "source": "apps/api/src/campaigns/campaign-builder.spec.ts; copywriting-pipeline.spec.ts"
+      }
+    ]
+  },
+  "irrelevant": [
+    {
+      "phrase": "ремонт",
+      "match": "token",
+      "reason": "мок Wordstat: «{seed} ремонт» не должен попадать в ядро продаж",
+      "source": "packages/connectors/src/keyword-ideas.ts"
+    },
+    {
+      "phrase": "бесплатно",
+      "match": "token",
+      "reason": "глобальный минус фикстур копирайтинга и билдера",
+      "source": "apps/api/src/creatives/copywriting-pipeline.spec.ts"
+    },
+    {
+      "phrase": "геймеры",
+      "match": "token",
+      "reason": "сегмент ЦА из copywriting-pipeline.spec, не запрос",
+      "source": "apps/api/src/creatives/copywriting-pipeline.spec.ts marketing.target_audience"
+    },
+    {
+      "phrase": "asus-gaming",
+      "match": "contains",
+      "reason": "хост website_url из campaign-builder.spec",
+      "source": "apps/api/src/campaigns/campaign-builder.spec.ts"
+    }
+  ]
+}

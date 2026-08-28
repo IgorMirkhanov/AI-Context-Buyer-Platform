@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://context:context@localhost:5432/context_buyer?schema=public
+
+      - name: Lint API
+        run: npm run lint -w api
+
+      - name: Test API
+        run: npm test -w api
+        env:
+          JWT_SECRET: test-secret
+          TOKEN_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          DATABASE_URL: postgresql://context:context@localhost:5432/context_buyer?schema=public
+
+      - name: Lint Web
+        run: npm run lint -w web
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: context
+          POSTGRES_PASSWORD: context
+          POSTGRES_DB: context_buyer_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U context -d context_buyer_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://context:context@localhost:5432/context_buyer_e2e?schema=public
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E (mocked ads APIs)
+        run: npm run test:e2e
+        env:
+          CI: true
+          DATABASE_URL: postgresql://context:context@localhost:5432/context_buyer_e2e?schema=public
