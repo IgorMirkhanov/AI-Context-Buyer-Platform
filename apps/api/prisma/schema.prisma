@@ -8,8 +8,11 @@ datasource db {
 }
 
 enum UserRole {
+  /// Владелец/админ агентства: весь портфель организации.
   owner
+  /// Контекстолог: только проекты из project_access, с правом записи.
   member
+  /// Субклиент: project_access, только чтение.
   client
 }
 

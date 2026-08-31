@@ -14,8 +14,18 @@ const UUID_RE =
 export class AccessService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Agency staff (owner/admin or contextologist), not a read-only client. */
   isAgency(role: string): boolean {
     return role === "owner" || role === "member";
+  }
+
+  /** Owner/admin: unfiltered organization portfolio. */
+  isOrgWide(role: string): boolean {
+    return role === "owner";
+  }
+
+  canWrite(role: string): boolean {
+    return this.isAgency(role);
   }
 
   isProjectId(value: string | undefined): value is string {
@@ -28,8 +38,16 @@ export class AccessService {
     }
   }
 
+  assertOrgWide(user: JwtPayload): void {
+    if (!this.isOrgWide(user.role)) {
+      throw new ForbiddenException(
+        "Only the organization owner can manage the agency",
+      );
+    }
+  }
+
   listWhere(user: JwtPayload): Prisma.ProjectWhereInput {
-    if (this.isAgency(user.role)) {
+    if (this.isOrgWide(user.role)) {
       return { organizationId: user.organizationId };
     }
     return {
@@ -52,7 +70,7 @@ export class AccessService {
     if (!project) {
       throw new NotFoundException("Project not found");
     }
-    if (this.isAgency(user.role)) {
+    if (this.isOrgWide(user.role)) {
       return project;
     }
     const grant = await this.prisma.projectAccess.findUnique({

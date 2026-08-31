@@ -16,7 +16,7 @@ const owner: JwtPayload = {
 describe('TenancyService invites', () => {
   const prisma = {
     user: { findUnique: jest.fn(), create: jest.fn() },
-    projectAccess: { upsert: jest.fn(), findMany: jest.fn() },
+    projectAccess: { upsert: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
     organization: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     project: { findFirst: jest.fn() },
     $transaction: jest.fn(),
@@ -99,5 +99,53 @@ describe('TenancyService invites', () => {
         'x@y.test',
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('invites a contextologist when the owner assigns a project', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.create.mockResolvedValue({
+      id: 'user-member',
+      email: 'spec@agency.test',
+      role: UserRole.member,
+      organizationId: 'org-a',
+    });
+    prisma.projectAccess.upsert.mockResolvedValue({});
+
+    const result = await service.inviteClient(
+      owner,
+      'p1',
+      'Spec@agency.test',
+      'member',
+    );
+    expect(result.email).toBe('spec@agency.test');
+    expect(result.role).toBe(UserRole.member);
+    expect(prisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: 'spec@agency.test',
+          role: UserRole.member,
+        }),
+      }),
+    );
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRole.member }),
+      expect.any(Object),
+    );
+  });
+
+  it('does not let a contextologist invite another contextologist', async () => {
+    prisma.projectAccess.findUnique.mockResolvedValue({
+      projectId: 'p1',
+      userId: 'user-member',
+    });
+    await expect(
+      service.inviteClient(
+        { ...owner, role: 'member', sub: 'user-member' },
+        'p1',
+        'other@agency.test',
+        'member',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.projectAccess.upsert).not.toHaveBeenCalled();
   });
 });

@@ -354,10 +354,14 @@ function ProjectPageInner() {
   const [me, setMe] = useState<Me | null>(null);
   const [aiReady, setAiReady] = useState(true);
   const [clientEmail, setClientEmail] = useState("");
+  const [specialistEmail, setSpecialistEmail] = useState("");
   const [clientAccess, setClientAccess] = useState<
     Array<{ userId: string; email: string; role: string }>
   >([]);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [specialistInviteLink, setSpecialistInviteLink] = useState<string | null>(
+    null,
+  );
   const [attrProvider, setAttrProvider] = useState("bitrix24");
   const [attrToken, setAttrToken] = useState("");
   const [attrExtra, setAttrExtra] = useState("");
@@ -823,7 +827,7 @@ function ProjectPageInner() {
         `/projects/${params.id}/access`,
         {
           method: "POST",
-          body: JSON.stringify({ email: clientEmail }),
+          body: JSON.stringify({ email: clientEmail, role: "client" }),
         },
       );
       setInviteLink(result.invitePath);
@@ -832,6 +836,32 @@ function ProjectPageInner() {
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Не удалось пригласить клиента",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function inviteSpecialist() {
+    setError(null);
+    setSpecialistInviteLink(null);
+    setPending(true);
+    try {
+      const result = await api<{ invitePath: string; email: string }>(
+        `/projects/${params.id}/access`,
+        {
+          method: "POST",
+          body: JSON.stringify({ email: specialistEmail, role: "member" }),
+        },
+      );
+      setSpecialistInviteLink(result.invitePath);
+      setSpecialistEmail("");
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось назначить контекстолога",
       );
     } finally {
       setPending(false);
@@ -1198,7 +1228,39 @@ function ProjectPageInner() {
 
       {tab === "brief" && me?.canWrite ? (
         <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
-          <h2 className="mb-2 font-medium">Доступ субклиента</h2>
+          <h2 className="mb-2 font-medium">Доступ к проекту</h2>
+          {me.role === "owner" ? (
+            <>
+              <h3 className="mb-1 text-sm font-medium">Контекстолог агентства</h3>
+              <p className="mb-3 text-sm text-zinc-600">
+                Видит только назначенные проекты в портфеле, но может собирать
+                семантику, объявления и запускать кампании на паузе — как
+                владелец на этих кабинетах.
+              </p>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <input
+                  className="ui-input min-w-56 flex-1"
+                  type="email"
+                  placeholder="email контекстолога"
+                  value={specialistEmail}
+                  onChange={(event) => setSpecialistEmail(event.target.value)}
+                />
+                <Button
+                  type="button"
+                  onClick={() => void inviteSpecialist()}
+                  disabled={pending || !specialistEmail}
+                >
+                  Назначить
+                </Button>
+              </div>
+              {specialistInviteLink ? (
+                <Alert tone="success" className="mb-4 break-all text-xs">
+                  Ссылка для контекстолога: {specialistInviteLink}
+                </Alert>
+              ) : null}
+            </>
+          ) : null}
+          <h3 className="mb-1 text-sm font-medium">Субклиент (только просмотр)</h3>
           <p className="mb-3 text-sm text-zinc-600">
             Клиент видит только этот проект и не может публиковать кампании.
           </p>
@@ -1211,7 +1273,8 @@ function ProjectPageInner() {
               onChange={(event) => setClientEmail(event.target.value)}
             />
             <Button
-              onClick={inviteClient}
+              type="button"
+              onClick={() => void inviteClient()}
               disabled={pending || !clientEmail}
             >
               Пригласить
@@ -1219,7 +1282,7 @@ function ProjectPageInner() {
           </div>
           {inviteLink ? (
             <Alert tone="success" className="mb-2 break-all text-xs">
-              Ссылка: {inviteLink}
+              Ссылка для субклиента: {inviteLink}
             </Alert>
           ) : null}
           {clientAccess.length > 0 ? (
@@ -1230,7 +1293,7 @@ function ProjectPageInner() {
                   className="flex items-center justify-between gap-2 border-t border-zinc-100 py-1"
                 >
                   <span>
-                    {item.email} · {item.role}
+                    {item.email} · {accessRoleLabel(item.role)}
                   </span>
                   <button
                     className="text-xs underline disabled:opacity-50"
@@ -1913,6 +1976,13 @@ function ProjectPageInner() {
       ) : null}
     </AppShell>
   );
+}
+
+function accessRoleLabel(role: string): string {
+  if (role === "member") return "контекстолог";
+  if (role === "client") return "субклиент";
+  if (role === "owner") return "владелец";
+  return role;
 }
 
 function MediaPreview({

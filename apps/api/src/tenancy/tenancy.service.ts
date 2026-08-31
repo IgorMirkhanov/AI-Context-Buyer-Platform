@@ -25,6 +25,7 @@ type InvitePayload = {
   email: string;
   organizationId: string;
   projectId: string;
+  role?: 'client' | 'member';
 };
 
 @Injectable()
@@ -62,7 +63,7 @@ export class TenancyService {
       slug: org.slug,
       plan: org.plan,
       branding: resolveBranding(org),
-      canWrite: this.access.isAgency(user.role),
+      canWrite: this.access.canWrite(user.role),
     };
   }
 
@@ -109,25 +110,40 @@ export class TenancyService {
     }));
   }
 
-  async inviteClient(user: JwtPayload, projectId: string, emailRaw: string) {
+  async inviteClient(
+    user: JwtPayload,
+    projectId: string,
+    emailRaw: string,
+    role: 'client' | 'member' = 'client',
+  ) {
     const project = await this.access.assertProject(user, projectId, 'write');
+    if (role === 'member') {
+      this.access.assertOrgWide(user);
+    }
     const email = emailRaw.trim().toLowerCase();
+    const inviteRole = role === 'member' ? UserRole.member : UserRole.client;
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing && existing.organizationId !== project.organizationId) {
       throw new ConflictException('Email already belongs to another organization');
     }
-    if (existing && this.access.isAgency(existing.role)) {
+    if (inviteRole === UserRole.client && existing && this.access.isAgency(existing.role)) {
       throw new ConflictException('Cannot invite agency staff as a client');
     }
+    if (inviteRole === UserRole.member && existing?.role === UserRole.owner) {
+      throw new ConflictException('Cannot invite the organization owner as a specialist');
+    }
+    if (inviteRole === UserRole.member && existing?.role === UserRole.client) {
+      throw new ConflictException('Email already belongs to a client');
+    }
 
-    let client = existing;
-    if (!client) {
+    let invited = existing;
+    if (!invited) {
       const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
-      client = await this.prisma.user.create({
+      invited = await this.prisma.user.create({
         data: {
           email,
           passwordHash,
-          role: UserRole.client,
+          role: inviteRole,
           organizationId: project.organizationId,
         },
       });
@@ -135,10 +151,10 @@ export class TenancyService {
 
     await this.prisma.projectAccess.upsert({
       where: {
-        projectId_userId: { projectId: project.id, userId: client.id },
+        projectId_userId: { projectId: project.id, userId: invited.id },
       },
       update: {},
-      create: { projectId: project.id, userId: client.id },
+      create: { projectId: project.id, userId: invited.id },
     });
 
     const inviteToken = this.jwt.sign(
@@ -147,13 +163,15 @@ export class TenancyService {
         email,
         organizationId: project.organizationId,
         projectId: project.id,
+        role: inviteRole,
       } satisfies InvitePayload,
       { expiresIn: '7d' },
     );
 
     return {
       email,
-      userId: client.id,
+      userId: invited.id,
+      role: inviteRole,
       inviteToken,
       invitePath: `/invite?token=${encodeURIComponent(inviteToken)}`,
     };
@@ -196,27 +214,35 @@ export class TenancyService {
       throw new NotFoundException('Project not found');
     }
 
+    const inviteRole =
+      payload.role === 'member' ? UserRole.member : UserRole.client;
     const email = payload.email.toLowerCase();
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    const client = await this.prisma.$transaction(async (tx) => {
+    const invited = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.user.findUnique({ where: { email } });
       if (existing && existing.organizationId !== payload.organizationId) {
         throw new ConflictException('Email already belongs to another organization');
       }
-      if (existing && this.access.isAgency(existing.role)) {
+      if (inviteRole === UserRole.client && existing && this.access.isAgency(existing.role)) {
         throw new ConflictException('Cannot accept invite for an agency user');
+      }
+      if (inviteRole === UserRole.member && existing?.role === UserRole.owner) {
+        throw new ConflictException('Cannot accept invite for an agency user');
+      }
+      if (inviteRole === UserRole.member && existing?.role === UserRole.client) {
+        throw new ConflictException('Email already belongs to a client');
       }
       const user = existing
         ? await tx.user.update({
             where: { id: existing.id },
-            data: { passwordHash, role: UserRole.client },
+            data: { passwordHash, role: inviteRole },
             include: { organization: true },
           })
         : await tx.user.create({
             data: {
               email,
               passwordHash,
-              role: UserRole.client,
+              role: inviteRole,
               organizationId: payload.organizationId,
             },
             include: { organization: true },
@@ -233,20 +259,20 @@ export class TenancyService {
 
     return {
       accessToken: this.jwt.sign({
-        sub: client.id,
-        organizationId: client.organizationId,
-        email: client.email,
-        role: client.role,
+        sub: invited.id,
+        organizationId: invited.organizationId,
+        email: invited.email,
+        role: invited.role,
       } satisfies JwtPayload),
       user: {
-        id: client.id,
-        email: client.email,
-        role: client.role,
-        organizationId: client.organizationId,
-        organizationName: client.organization.name,
-        branding: resolveBranding(client.organization),
-        canWrite: false,
-        beginnerMode: client.beginnerMode ?? true,
+        id: invited.id,
+        email: invited.email,
+        role: invited.role,
+        organizationId: invited.organizationId,
+        organizationName: invited.organization.name,
+        branding: resolveBranding(invited.organization),
+        canWrite: this.access.canWrite(invited.role),
+        beginnerMode: invited.beginnerMode ?? true,
       },
     };
   }

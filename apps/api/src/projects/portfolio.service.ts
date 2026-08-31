@@ -123,7 +123,7 @@ export class PortfolioService {
   ) {}
 
   async listForUser(user: JwtPayload): Promise<PortfolioRow[]> {
-    const clientClause = this.access.isAgency(user.role)
+    const scopedClause = this.access.isOrgWide(user.role)
       ? Prisma.empty
       : Prisma.sql`AND EXISTS (
           SELECT 1 FROM project_access pa
@@ -222,7 +222,7 @@ export class PortfolioService {
         ) AS favorite
       FROM projects p
       WHERE p.organization_id = ${user.organizationId}::uuid
-      ${clientClause}
+      ${scopedClause}
       ORDER BY p.created_at DESC
     `;
     return rows.map(mapPortfolioRow);

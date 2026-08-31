@@ -20,12 +20,18 @@ describe("PortfolioService", () => {
     email: "owner@agency.test",
     role: "owner",
   };
-  const client: JwtPayload = {
-    sub: "user-client",
-    organizationId: "org-a",
-    email: "c@x.test",
-    role: "client",
-  };
+const client: JwtPayload = {
+  sub: "user-client",
+  organizationId: "org-a",
+  email: "c@x.test",
+  role: "client",
+};
+const member: JwtPayload = {
+  sub: "user-member",
+  organizationId: "org-a",
+  email: "spec@agency.test",
+  role: "member",
+};
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -53,6 +59,21 @@ describe("PortfolioService", () => {
     expect(sql).toContain("ops_alerts");
     expect(sql).toContain("ad_write_audit");
     expect(sql).toContain("organization_id");
+  });
+
+  it("does not scope the portfolio query for the organization owner", async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    await service.listForUser(owner);
+    const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+    expect(sql).not.toContain("project_access");
+  });
+
+  it("restricts the query to granted projects for a contextologist", async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    await service.listForUser(member);
+    const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+    expect(sql).toContain("project_access");
+    expect(sql).toContain("user-member");
   });
 
   it("restricts the query to granted projects for a client", async () => {

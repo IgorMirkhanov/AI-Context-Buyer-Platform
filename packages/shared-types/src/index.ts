@@ -1,4 +1,4 @@
-export type UserRole = "owner" | "member";
+export type UserRole = "owner" | "member" | "client";
 
 export type ProjectStatus = "draft" | "active" | "archived" | "disconnected";
 

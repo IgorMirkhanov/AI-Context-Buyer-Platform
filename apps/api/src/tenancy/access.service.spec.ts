@@ -17,6 +17,13 @@ const client: JwtPayload = {
   role: 'client',
 };
 
+const member: JwtPayload = {
+  sub: 'user-member',
+  organizationId: 'org-a',
+  email: 'spec@agency.test',
+  role: 'member',
+};
+
 describe('AccessService', () => {
   const prisma = {
     project: { findFirst: jest.fn() },
@@ -28,8 +35,15 @@ describe('AccessService', () => {
     jest.clearAllMocks();
   });
 
-  it('lists all organization projects for agency staff', () => {
+  it('lists all organization projects for the owner', () => {
     expect(access.listWhere(owner)).toEqual({ organizationId: 'org-a' });
+  });
+
+  it('lists only granted projects for a contextologist', () => {
+    expect(access.listWhere(member)).toEqual({
+      organizationId: 'org-a',
+      clientAccess: { some: { userId: 'user-member' } },
+    });
   });
 
   it('lists only granted projects for a client in the same org', () => {
@@ -72,6 +86,25 @@ describe('AccessService', () => {
       ForbiddenException,
     );
     expect(prisma.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('allows a contextologist to write a granted project', async () => {
+    prisma.project.findFirst.mockResolvedValue({ id: 'p1', organizationId: 'org-a' });
+    prisma.projectAccess.findUnique.mockResolvedValue({
+      projectId: 'p1',
+      userId: 'user-member',
+    });
+    await expect(access.assertProject(member, 'p1', 'write')).resolves.toMatchObject({
+      id: 'p1',
+    });
+  });
+
+  it('hides a project from a contextologist without a grant', async () => {
+    prisma.project.findFirst.mockResolvedValue({ id: 'p2', organizationId: 'org-a' });
+    prisma.projectAccess.findUnique.mockResolvedValue(null);
+    await expect(access.assertProject(member, 'p2', 'read')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('does not look up projects of another organization', async () => {

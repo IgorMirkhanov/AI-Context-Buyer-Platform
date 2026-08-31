@@ -155,6 +155,7 @@ export default function ProjectsPage() {
       orgName={me.organizationName}
       email={me.email}
       canWrite={me.canWrite}
+      canManageOrg={me.role === "owner"}
       beginnerMode={me.beginnerMode !== false}
       onBeginnerModeChange={(value) =>
         setMe((prev) => (prev ? { ...prev, beginnerMode: value } : prev))
@@ -165,7 +166,7 @@ export default function ProjectsPage() {
     >
       <h1 className="mb-4 text-2xl font-semibold">Мои проекты</h1>
 
-      {me.canWrite ? (
+      {me.role === "owner" ? (
         <Card>
           <ProjectCreateWizard
             name={name}
@@ -188,6 +189,12 @@ export default function ProjectsPage() {
             onSubmit={onCreate}
           />
         </Card>
+      ) : me.role === "member" ? (
+        <Alert tone="info" className="mb-4">
+          Вам доступны только проекты, которые назначил владелец агентства.
+          На них те же права, что у агентства: семантика, объявления, запуск
+          на паузе.
+        </Alert>
       ) : (
         <Alert tone="info" className="mb-4">
           Вам доступны только назначенные проекты. Изменения в кабинетах
@@ -257,14 +264,18 @@ export default function ProjectsPage() {
       <PortfolioTable
         rows={projects}
         emptyTitle={
-          me.canWrite
+          me.role === "owner"
             ? undefined
-            : "Попросите агентство назначить вам проект"
+            : me.role === "member"
+              ? "Попросите владельца назначить проекты"
+              : "Попросите агентство назначить вам проект"
         }
         emptyHint={
-          me.canWrite
+          me.role === "owner"
             ? undefined
-            : "Попросите агентство пригласить вас в проект. Здесь появятся только назначенные кабинеты."
+            : me.role === "member"
+              ? "Владелец агентства назначает контекстолога на вкладке «Бриф» проекта. После этого строка появится здесь."
+              : "Попросите агентство пригласить вас в проект. Здесь появятся только назначенные кабинеты."
         }
         onToggleFavorite={async (id, favorite) => {
           setProjects((prev) =>

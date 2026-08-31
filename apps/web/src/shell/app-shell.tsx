@@ -20,6 +20,7 @@ export function AppShell({
   orgName,
   email,
   canWrite,
+  canManageOrg = false,
   project,
   tab,
   current = project ? "project" : "projects",
@@ -34,6 +35,7 @@ export function AppShell({
   orgName?: string;
   email?: string;
   canWrite?: boolean;
+  canManageOrg?: boolean;
   project?: ShellProject | null;
   tab?: ProjectTabId;
   current?: "projects" | "settings" | "project";
@@ -88,7 +90,7 @@ export function AppShell({
           >
             Портфель проектов
           </Link>
-          {canWrite ? (
+          {canManageOrg ? (
             <Link
               href="/settings/ai"
               className={`rounded-lg px-2 py-1.5 text-sm ${

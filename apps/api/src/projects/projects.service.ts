@@ -87,7 +87,7 @@ export class ProjectsService {
   }
 
   async createForOrganization(user: JwtPayload, dto: CreateProjectDto) {
-    this.access.assertAgency(user);
+    this.access.assertOrgWide(user);
     const organizationId = user.organizationId;
     const payload = this.buildBriefPayload(dto);
     try {

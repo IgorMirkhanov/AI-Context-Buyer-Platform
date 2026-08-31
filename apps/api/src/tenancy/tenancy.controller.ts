@@ -59,7 +59,7 @@ export class TenancyController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InviteClientDto,
   ) {
-    return this.tenancy.inviteClient(req.user, id, dto.email);
+    return this.tenancy.inviteClient(req.user, id, dto.email, dto.role ?? 'client');
   }
 
   @Delete('projects/:id/access/:userId')

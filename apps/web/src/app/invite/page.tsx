@@ -65,8 +65,7 @@ export default function InvitePage() {
     <GuestShell>
       <h1 className="mb-2 text-2xl font-semibold">Приглашение</h1>
       <p className="mb-6 text-sm text-[var(--fg-muted)]">
-        Задайте пароль, чтобы открыть только свой проект. Рекламный кабинет
-        менять нельзя.
+        Задайте пароль, чтобы войти в назначенные проекты.
       </p>
       <Suspense fallback={<p className="text-sm text-[var(--fg-muted)]">Загрузка…</p>}>
         <InviteForm />

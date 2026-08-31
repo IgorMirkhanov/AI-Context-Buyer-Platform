@@ -1,4 +1,11 @@
-import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -34,6 +41,11 @@ export class UpdateBrandingDto {
 export class InviteClientDto {
   @IsEmail()
   email!: string;
+
+  /** client = read-only субклиент; member = контекстолог с записью. */
+  @IsOptional()
+  @IsIn(['client', 'member'])
+  role?: 'client' | 'member';
 }
 
 export class AcceptInviteDto {
