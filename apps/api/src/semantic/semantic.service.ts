@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { AgentTaskStatus, AgentType, KeywordIntent } from '@prisma/client';
 import {
   resolveLlmCostUsd,
+  resolveSemanticLlm,
   runSemanticPipeline,
   SemanticBriefInput,
   SemanticCore,
@@ -18,6 +20,8 @@ import { AiProviderService } from '../ai-provider/ai-provider.service';
 
 @Injectable()
 export class SemanticService {
+  private readonly log = new Logger(SemanticService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly connectors: ConnectorRouter,
@@ -25,7 +29,7 @@ export class SemanticService {
   ) {}
 
   async run(organizationId: string, projectId: string) {
-    const credentials = await this.ai.requireReady(organizationId);
+    const credentials = await this.ai.tryResolveOptional(organizationId);
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, organizationId },
       include: { briefs: { orderBy: { version: 'desc' }, take: 1 } },
@@ -53,8 +57,12 @@ export class SemanticService {
         briefRow.payloadJson as ProjectBriefPayload,
       );
       const connector = this.connectors.forPlatform(project.primaryPlatform);
+      const { llm, mode } = resolveSemanticLlm({
+        apiKey: credentials?.apiKey ?? null,
+        onFallback: (message) => this.log.warn(message),
+      });
       const core = await runSemanticPipeline(brief, {
-        apiKey: credentials.apiKey,
+        llm,
         getKeywordIdeas: (seeds, geo) =>
           connector.getKeywordIdeas(seeds, geo),
         onLlmCall: async (usage) => {
@@ -84,7 +92,7 @@ export class SemanticService {
           outputRef: 'semantic_core',
         },
       });
-      return { taskId: task.id, status: AgentTaskStatus.done, core };
+      return { taskId: task.id, status: AgentTaskStatus.done, core, llmMode: mode };
     } catch (err) {
       const details =
         err instanceof SemanticCoreValidationError

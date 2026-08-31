@@ -64,11 +64,18 @@ export type OptimizationInput = {
 };
 
 export type OptimizationWriter = {
-  wrap(facts: string[]): {
-    insights: string[];
-    prompt: string;
-    response: string;
-  };
+  wrap(facts: string[]): OptimizationWrapResult | Promise<OptimizationWrapResult>;
+};
+
+export type OptimizationWrapResult = {
+  insights: string[];
+  prompt: string;
+  response: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  latencyMs?: number;
 };
 
 export const OPTIMIZATION_THRESHOLDS = {

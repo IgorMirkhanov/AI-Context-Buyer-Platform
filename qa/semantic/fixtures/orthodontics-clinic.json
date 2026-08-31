@@ -1,0 +1,183 @@
+{
+  "id": "orthodontics-clinic",
+  "title": "Ортодонтическая клиника (СПб)",
+  "provenance": "Свежий бриф, не из docs/spec/e2e репозитория. Ниша — стоматология/ортодонтия, без пересечения с ноутбуками и брендовыми эвристиками asus/rog. Эталон: шаблоны MockKeywordIdeasProvider на два УТП + типичные поисковые формулировки контекстолога для медуслуг (не механические {seed}+шаблон).",
+  "brief": {
+    "website_url": "https://smile-care-clinic.example",
+    "geo": ["RU-SPB"],
+    "usp": [
+      "установка брекетов под ключ",
+      "лечение кариеса без боли"
+    ],
+    "target_audience": [{ "segment": "взрослые 25-45" }],
+    "global_negative_keywords": ["бесплатно", "вакансия", "обучение"],
+    "price_segment": "premium",
+    "forbidden_phrases": ["госпиталь"]
+  },
+  "gold": {
+    "keywords": [
+      {
+        "phrase": "установка брекетов под ключ",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "ручной эталон: основное УТП брифа"
+      },
+      {
+        "phrase": "купить установка брекетов под ключ",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "packages/connectors/src/keyword-ideas.ts: «купить {seed}»"
+      },
+      {
+        "phrase": "установка брекетов под ключ цена",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена»"
+      },
+      {
+        "phrase": "установка брекетов под ключ заказать",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать»"
+      },
+      {
+        "phrase": "установка брекетов под ключ обзор",
+        "intent": "warm",
+        "cluster_hint": "Брекеты",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор»"
+      },
+      {
+        "phrase": "установка брекетов под ключ отзывы",
+        "intent": "warm",
+        "cluster_hint": "Брекеты",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} отзывы»"
+      },
+      {
+        "phrase": "установка брекетов под ключ официальный сайт",
+        "intent": "navigational",
+        "cluster_hint": "Брекеты",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} официальный сайт»"
+      },
+      {
+        "phrase": "лечение кариеса без боли",
+        "intent": "hot",
+        "cluster_hint": "Кариес",
+        "source": "ручной эталон: второе УТП брифа"
+      },
+      {
+        "phrase": "купить лечение кариеса без боли",
+        "intent": "hot",
+        "cluster_hint": "Кариес",
+        "source": "packages/connectors/src/keyword-ideas.ts: «купить {seed}»"
+      },
+      {
+        "phrase": "лечение кариеса без боли цена",
+        "intent": "hot",
+        "cluster_hint": "Кариес",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена»"
+      },
+      {
+        "phrase": "лечение кариеса без боли заказать",
+        "intent": "hot",
+        "cluster_hint": "Кариес",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать»"
+      },
+      {
+        "phrase": "лечение кариеса без боли обзор",
+        "intent": "warm",
+        "cluster_hint": "Кариес",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор»"
+      },
+      {
+        "phrase": "лечение кариеса без боли отзывы",
+        "intent": "warm",
+        "cluster_hint": "Кариес",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} отзывы»"
+      },
+      {
+        "phrase": "лечение кариеса без боли официальный сайт",
+        "intent": "navigational",
+        "cluster_hint": "Кариес",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} официальный сайт»"
+      },
+      {
+        "phrase": "брекеты для взрослых",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "ручной эталон: типичный запрос ортодонтии, не шаблон мока"
+      },
+      {
+        "phrase": "лечение кариеса цена",
+        "intent": "hot",
+        "cluster_hint": "Кариес",
+        "source": "ручной эталон: укороченная коммерческая формулировка"
+      },
+      {
+        "phrase": "стоимость установки брекетов",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "ручной эталон: синоним «цена» для медуслуг"
+      },
+      {
+        "phrase": "записаться на брекеты",
+        "intent": "hot",
+        "cluster_hint": "Брекеты",
+        "source": "ручной эталон: сервисный CTA без слова «купить»"
+      }
+    ],
+    "global_negatives": [
+      {
+        "phrase": "бесплатно",
+        "source": "бриф global_negative_keywords"
+      },
+      {
+        "phrase": "вакансия",
+        "source": "бриф global_negative_keywords"
+      },
+      {
+        "phrase": "обучение",
+        "source": "бриф global_negative_keywords"
+      },
+      {
+        "phrase": "госпиталь",
+        "source": "бриф forbidden_phrases"
+      },
+      {
+        "phrase": "б/у",
+        "source": "price_segment premium → extraNegativesFromBrief"
+      }
+    ]
+  },
+  "irrelevant": [
+    {
+      "phrase": "ремонт",
+      "match": "token",
+      "reason": "сервисный шаблон мока Wordstat",
+      "source": "packages/connectors/src/keyword-ideas.ts"
+    },
+    {
+      "phrase": "бесплатно",
+      "match": "token",
+      "reason": "глобальный минус брифа",
+      "source": "orthodontics-clinic brief"
+    },
+    {
+      "phrase": "вакансия",
+      "match": "token",
+      "reason": "глобальный минус брифа",
+      "source": "orthodontics-clinic brief"
+    },
+    {
+      "phrase": "обучение",
+      "match": "token",
+      "reason": "глобальный минус брифа",
+      "source": "orthodontics-clinic brief"
+    },
+    {
+      "phrase": "госпиталь",
+      "match": "token",
+      "reason": "forbidden_phrases брифа",
+      "source": "orthodontics-clinic brief"
+    }
+  ]
+}

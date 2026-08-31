@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -13,9 +14,11 @@ import {
 import {
   ClusterCreatives,
   CopyMarketing,
+  CopywritingLlmMode,
   PlatformLimit,
   agentAcceptance,
   clusterEditAcceptance,
+  resolveCopywritingLlm,
   resolveLlmCostUsd,
   runCopyAndValidate,
   SemanticCore,
@@ -27,13 +30,15 @@ import { AiProviderService } from '../ai-provider/ai-provider.service';
 
 @Injectable()
 export class CreativesService {
+  private readonly log = new Logger(CreativesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiProviderService,
   ) {}
 
   async run(organizationId: string, projectId: string) {
-    await this.ai.requireReady(organizationId);
+    const credentials = await this.ai.tryResolveOptional(organizationId);
     const project = await this.requireProject(organizationId, projectId);
     const [briefRow, clusters, dbLimits] = await Promise.all([
       this.prisma.projectBrief.findFirst({
@@ -72,39 +77,61 @@ export class CreativesService {
       const marketing = this.toMarketing(payload);
       const limits = this.toLimits(dbLimits);
       const core = this.toCore(clusters);
-      const result = runCopyAndValidate(core, marketing, limits);
-
-      await this.persist(projectId, clusters, result.creatives, result.issues);
-      const copyPrompt = JSON.stringify({
-        clusters: result.creatives.length,
-      });
-      const copyResponse = JSON.stringify({
-        issues: result.issues.length,
-      });
-      await this.prisma.llmCallLog.create({
-        data: {
-          projectId,
-          agentType: AgentType.copywriting,
-          step: 'copy_and_validate',
-          model: 'heuristic',
-          prompt: copyPrompt,
-          response: copyResponse,
-          inputTokens: Math.ceil(copyPrompt.length / 4),
-          outputTokens: Math.ceil(copyResponse.length / 4),
-          costUsd: resolveLlmCostUsd({
-            model: 'heuristic',
-            inputTokens: Math.ceil(copyPrompt.length / 4),
-            outputTokens: Math.ceil(copyResponse.length / 4),
-          }),
-          latencyMs: 0,
+      const { writer, mode } = resolveCopywritingLlm({
+        apiKey: credentials?.apiKey ?? null,
+        onFallback: (message) => this.log.warn(message),
+        onLlmCall: async (usage) => {
+          await this.prisma.llmCallLog.create({
+            data: {
+              projectId,
+              agentType: AgentType.copywriting,
+              step: usage.step,
+              model: usage.model,
+              prompt: usage.prompt,
+              response: usage.response,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              costUsd: resolveLlmCostUsd(usage),
+              latencyMs: usage.latencyMs,
+            },
+          });
         },
       });
+      const result = await runCopyAndValidate(core, marketing, limits, writer);
+
+      await this.persist(projectId, clusters, result.creatives, result.issues);
+      if (mode === 'heuristic') {
+        const copyPrompt = JSON.stringify({
+          clusters: result.creatives.length,
+        });
+        const copyResponse = JSON.stringify({
+          issues: result.issues.length,
+        });
+        await this.prisma.llmCallLog.create({
+          data: {
+            projectId,
+            agentType: AgentType.copywriting,
+            step: 'copy_and_validate',
+            model: 'heuristic',
+            prompt: copyPrompt,
+            response: copyResponse,
+            inputTokens: Math.ceil(copyPrompt.length / 4),
+            outputTokens: Math.ceil(copyResponse.length / 4),
+            costUsd: resolveLlmCostUsd({
+              model: 'heuristic',
+              inputTokens: Math.ceil(copyPrompt.length / 4),
+              outputTokens: Math.ceil(copyResponse.length / 4),
+            }),
+            latencyMs: 0,
+          },
+        });
+      }
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
           status: AgentTaskStatus.done,
           finishedAt: new Date(),
-          outputRef: 'ad_creatives',
+          outputRef: `ad_creatives:${mode}`,
         },
       });
       await this.prisma.agentTask.create({
@@ -117,7 +144,7 @@ export class CreativesService {
           outputRef: `issues:${result.issues.length}`,
         },
       });
-      return this.getResult(organizationId, projectId);
+      return { ...(await this.getResult(organizationId, projectId)), llmMode: mode };
     } catch (err) {
       const details = err instanceof Error ? err.message : 'copywriting failed';
       await this.prisma.agentTask.update({
@@ -161,6 +188,7 @@ export class CreativesService {
     return {
       task: copyTask,
       validationTask,
+      llmMode: parseCopywritingLlmMode(copyTask?.outputRef),
       quality: {
         creatives: agentAcceptance({
           total: creatives.length,
@@ -367,6 +395,17 @@ export class CreativesService {
     }
     return project;
   }
+}
+
+function parseCopywritingLlmMode(
+  outputRef: string | null | undefined,
+): CopywritingLlmMode | null {
+  if (!outputRef) return null;
+  if (outputRef.endsWith(':anthropic')) return 'anthropic';
+  if (outputRef.endsWith(':heuristic') || outputRef === 'ad_creatives') {
+    return 'heuristic';
+  }
+  return null;
 }
 
 function matchCreativeId(

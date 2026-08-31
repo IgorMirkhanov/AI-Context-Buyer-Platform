@@ -33,7 +33,9 @@ export async function fillCreateForm(
   }
   await form.getByRole("button", { name: "Далее" }).click();
   await form.getByRole("button", { name: "Далее" }).click();
-  await expect(form.getByText("Подключить кабинет")).toBeVisible();
+  await expect(
+    form.getByText("Подключить кабинет", { exact: true }),
+  ).toBeVisible();
   await form.getByRole("button", { name: "Создать" }).click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}/);
 }

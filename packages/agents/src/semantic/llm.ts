@@ -22,6 +22,10 @@ export interface SemanticLlm {
   nameCluster(
     phrases: string[],
   ): Promise<{ name: string; category: ClusterCategory; usage: LlmUsage }>;
+  suggestNearIntentPhrases(
+    brief: SemanticBriefInput,
+    wordstatPhrases: string[],
+  ): Promise<{ phrases: string[]; usage: LlmUsage }>;
 }
 
 function usage(
@@ -103,6 +107,22 @@ export class HeuristicSemanticLlm implements SemanticLlm {
         "name_cluster",
         phrases.join("\n"),
         JSON.stringify({ name, category }),
+        Date.now() - started,
+      ),
+    };
+  }
+
+  async suggestNearIntentPhrases(
+    _brief: SemanticBriefInput,
+    _wordstatPhrases: string[],
+  ): Promise<{ phrases: string[]; usage: LlmUsage }> {
+    const started = Date.now();
+    return {
+      phrases: [],
+      usage: usage(
+        "suggest_near_intent",
+        "",
+        JSON.stringify({ phrases: [] }),
         Date.now() - started,
       ),
     };

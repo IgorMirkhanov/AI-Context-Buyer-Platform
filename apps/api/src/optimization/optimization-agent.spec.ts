@@ -80,8 +80,8 @@ describe('Optimization Agent rules', () => {
 });
 
 describe('Optimization Agent plan', () => {
-  it('builds proposed actions with computed figures in the rationale', () => {
-    const plan = buildOptimizationPlan({
+  it('builds proposed actions with computed figures in the rationale', async () => {
+    const plan = await buildOptimizationPlan({
       period: { from: '2026-08-20', to: '2026-08-26' },
       targetCpl: 300,
       campaigns: [campaignZeroConv, campaignExpensiveCpl],
@@ -120,7 +120,7 @@ describe('Optimization Agent plan', () => {
     expect(minus?.rationale).toContain('240');
   });
 
-  it('rejects an LLM that invents numbers instead of wrapping facts', () => {
+  it('rejects an LLM that invents numbers instead of wrapping facts', async () => {
     const liar: OptimizationWriter = {
       wrap: () => ({
         insights: ['CPL составил 12 при цели 8, отключайте всё.'],
@@ -128,7 +128,7 @@ describe('Optimization Agent plan', () => {
         response: '',
       }),
     };
-    expect(() =>
+    await expect(
       buildOptimizationPlan(
         {
           period: { from: '2026-08-20', to: '2026-08-26' },
@@ -138,7 +138,7 @@ describe('Optimization Agent plan', () => {
         },
         liar,
       ),
-    ).toThrow(/dropped computed figure/);
+    ).rejects.toThrow(/dropped computed figure/);
   });
 
   it('heuristic wrap keeps HeuristicOptimizationLlm figures', () => {

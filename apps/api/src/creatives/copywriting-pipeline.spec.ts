@@ -77,8 +77,8 @@ class LeakyLlmCopywriter implements Copywriter {
 }
 
 describe('Copywriting Agent', () => {
-  it('uses USP and strips forbidden_phrases from a leaky LLM mock', () => {
-    const creatives = runCopywriting(
+  it('uses USP and strips forbidden_phrases from a leaky LLM mock', async () => {
+    const creatives = await runCopywriting(
       core,
       marketing,
       YANDEX_LIMITS,
@@ -92,12 +92,12 @@ describe('Copywriting Agent', () => {
     expect(() => validateAdCreatives(creatives)).not.toThrow();
   });
 
-  it('heuristic copywriter never emits brief forbidden_phrases', () => {
+  it('heuristic copywriter never emits brief forbidden_phrases', async () => {
     const withLeakInAudience: CopyMarketing = {
       ...marketing,
       target_audience: [{ segment: 'самый дешёвый сегмент' }],
     };
-    const creatives = runCopywriting(core, withLeakInAudience, YANDEX_LIMITS);
+    const creatives = await runCopywriting(core, withLeakInAudience, YANDEX_LIMITS);
     const blob = JSON.stringify(creatives).toLowerCase();
     expect(blob).not.toContain('самый дешёвый');
     expect(blob).toContain('гарантия');
@@ -414,8 +414,8 @@ describe('Validation Agent', () => {
 });
 
 describe('Copywriting + Validation integration', () => {
-  it('runs semantic_core → ad_creatives → validation issues', () => {
-    const result = runCopyAndValidate(core, marketing, YANDEX_LIMITS);
+  it('runs semantic_core → ad_creatives → validation issues', async () => {
+    const result = await runCopyAndValidate(core, marketing, YANDEX_LIMITS);
     expect(result.creatives).toHaveLength(2);
     expect(result.creatives[0].ads.length).toBeGreaterThanOrEqual(2);
     const blob = JSON.stringify(result.creatives).toLowerCase();

@@ -15,7 +15,7 @@ export type Copywriter = {
     cluster: SemanticCluster,
     marketing: CopyMarketing,
     limits: PlatformLimit[],
-  ): ClusterCreatives;
+  ): ClusterCreatives | Promise<ClusterCreatives>;
 };
 
 /**

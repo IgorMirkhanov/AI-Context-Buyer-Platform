@@ -18,7 +18,7 @@ export class AiProviderController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('owner', 'member')
+  @Roles('owner')
   upsert(
     @Req() req: { user: JwtPayload },
     @Body() dto: UpsertAiProviderDto,
@@ -28,7 +28,7 @@ export class AiProviderController {
 
   @Post('verify')
   @UseGuards(RolesGuard)
-  @Roles('owner', 'member')
+  @Roles('owner')
   verify(
     @Req() req: { user: JwtPayload },
     @Body() dto: VerifyAiProviderDto,

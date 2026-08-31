@@ -5,7 +5,13 @@ import {
   InMemoryVectorIndex,
   VectorIndex,
 } from "./embeddings";
-import { extraNegativesFromBrief, intentFromHeuristics, tokenize } from "./heuristics";
+import {
+  extraNegativesFromBrief,
+  filterKeywordIdeas,
+  intentFromHeuristics,
+  phraseClusteringCore,
+  tokenize,
+} from "./heuristics";
 import { HeuristicSemanticLlm, SemanticLlm } from "./llm";
 import {
   KeywordIdea,
@@ -17,6 +23,7 @@ import {
   SemanticKeyword,
 } from "./types";
 import { validateSemanticCore } from "./validate";
+import { normalizePhrase } from "./qa-compare";
 
 export type KeywordIdeasFn = (
   seeds: string[],
@@ -53,6 +60,40 @@ export async function expandKeywordsStep(
     return [];
   }
   return getKeywordIdeas(masks, geo);
+}
+
+export function filterKeywordsStep(
+  ideas: KeywordIdea[],
+  brief: SemanticBriefInput,
+): KeywordIdea[] {
+  const negatives = generateNegativesStep(brief);
+  return filterKeywordIdeas(ideas, negatives);
+}
+
+/** LLM-подсказки near-intent поверх Wordstat; heuristic-путь возвращает пустой список. */
+export async function suggestNearIntentStep(
+  ideas: KeywordIdea[],
+  brief: SemanticBriefInput,
+  llm: SemanticLlm,
+): Promise<KeywordIdea[]> {
+  const wordstatPhrases = ideas.map((item) => item.phrase);
+  const { phrases } = await llm.suggestNearIntentPhrases(brief, wordstatPhrases);
+  if (phrases.length === 0) {
+    return ideas;
+  }
+  const seen = new Set(wordstatPhrases.map(normalizePhrase));
+  const extras: KeywordIdea[] = [];
+  for (const phrase of phrases) {
+    const normalized = normalizePhrase(phrase);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    extras.push({
+      phrase: normalized,
+      frequency: 1,
+      source: "llm_near_intent",
+    });
+  }
+  return [...ideas, ...extras];
 }
 
 export async function labelIntentStep(
@@ -105,7 +146,8 @@ export async function clusterStep(
     return [];
   }
   const phrases = keywords.map((item) => item.phrase);
-  const vectors = await embeddings.embed(phrases);
+  const clusteringTexts = phrases.map(phraseClusteringCore);
+  const vectors = await embeddings.embed(clusteringTexts);
   phrases.forEach((phrase, i) => vectorIndex.upsert(phrase, vectors[i]));
 
   const groups = clusterByCosine(phrases, vectors);
@@ -173,6 +215,7 @@ export async function runSemanticPipeline(
   const originalExtract = llm.extractMasks.bind(llm);
   const originalClassify = llm.classifyIntents.bind(llm);
   const originalName = llm.nameCluster.bind(llm);
+  const originalNearIntent = llm.suggestNearIntentPhrases.bind(llm);
   const wrapped: SemanticLlm = {
     extractMasks: async (b, t) => {
       const result = await originalExtract(b, t);
@@ -189,6 +232,11 @@ export async function runSemanticPipeline(
       await deps.onLlmCall?.(result.usage);
       return result;
     },
+    suggestNearIntentPhrases: async (b, phrases) => {
+      const result = await originalNearIntent(b, phrases);
+      await deps.onLlmCall?.(result.usage);
+      return result;
+    },
   };
 
   const masks = await extractMasksStep(brief, wrapped, landingText);
@@ -197,7 +245,10 @@ export async function runSemanticPipeline(
     brief.geo,
     deps.getKeywordIdeas,
   );
-  const labeled = await labelIntentStep(ideas, wrapped);
+  const filtered = filterKeywordsStep(ideas, brief);
+  const withNearIntent = await suggestNearIntentStep(filtered, brief, wrapped);
+  const relabeled = filterKeywordsStep(withNearIntent, brief);
+  const labeled = await labelIntentStep(relabeled, wrapped);
   const globalNegatives = generateNegativesStep(brief);
   const clusters = await clusterStep(
     labeled,

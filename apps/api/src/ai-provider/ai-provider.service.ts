@@ -52,6 +52,13 @@ export class AiProviderService {
     return resolved;
   }
 
+  /** Без исключения — для агентов с heuristic fallback (Semantic). */
+  async tryResolveOptional(
+    organizationId: string,
+  ): Promise<ResolvedAiKey | null> {
+    return this.resolveAny(organizationId);
+  }
+
   async resolveApiKey(
     organizationId: string,
     provider: AiProviderName,

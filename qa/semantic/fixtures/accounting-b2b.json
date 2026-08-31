@@ -1,0 +1,179 @@
+{
+  "id": "accounting-b2b",
+  "title": "Бухгалтерский аутсорсинг для ИП (B2B)",
+  "provenance": "Свежий бриф, не из docs/spec/e2e репозитория. Вертикаль — B2B-услуги (аутсорсинг учёта), не товар и не B2C-медицина. Эталон: шаблоны MockKeywordIdeasProvider на два УТП + 4 ручные коммерческие формулировки контекстолога (разговорные/глагольные, не выводимые из масок брифа).",
+  "brief": {
+    "website_url": "https://ledger-pro-b2b.example",
+    "geo": ["RU-MOW"],
+    "usp": [
+      "бухгалтерский аутсорсинг для ип",
+      "сдача отчетности в фнс под ключ"
+    ],
+    "target_audience": [{ "segment": "владельцы малого бизнеса и ип" }],
+    "global_negative_keywords": ["бесплатно", "вакансия", "курсы"],
+    "price_segment": "standard",
+    "forbidden_phrases": ["самоучитель"]
+  },
+  "gold": {
+    "keywords": [
+      {
+        "phrase": "бухгалтерский аутсорсинг для ип",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "ручной эталон: основное УТП брифа"
+      },
+      {
+        "phrase": "купить бухгалтерский аутсорсинг для ип",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "packages/connectors/src/keyword-ideas.ts: «купить {seed}»"
+      },
+      {
+        "phrase": "бухгалтерский аутсорсинг для ип цена",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена»"
+      },
+      {
+        "phrase": "бухгалтерский аутсорсинг для ип заказать",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать»"
+      },
+      {
+        "phrase": "бухгалтерский аутсорсинг для ип обзор",
+        "intent": "warm",
+        "cluster_hint": "Аутсорсинг",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор»"
+      },
+      {
+        "phrase": "бухгалтерский аутсорсинг для ип отзывы",
+        "intent": "warm",
+        "cluster_hint": "Аутсорсинг",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} отзывы»"
+      },
+      {
+        "phrase": "бухгалтерский аутсорсинг для ип официальный сайт",
+        "intent": "navigational",
+        "cluster_hint": "Аутсорсинг",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} официальный сайт»"
+      },
+      {
+        "phrase": "сдача отчетности в фнс под ключ",
+        "intent": "hot",
+        "cluster_hint": "Отчётность",
+        "source": "ручной эталон: второе УТП брифа"
+      },
+      {
+        "phrase": "купить сдача отчетности в фнс под ключ",
+        "intent": "hot",
+        "cluster_hint": "Отчётность",
+        "source": "packages/connectors/src/keyword-ideas.ts: «купить {seed}»"
+      },
+      {
+        "phrase": "сдача отчетности в фнс под ключ цена",
+        "intent": "hot",
+        "cluster_hint": "Отчётность",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} цена»"
+      },
+      {
+        "phrase": "сдача отчетности в фнс под ключ заказать",
+        "intent": "hot",
+        "cluster_hint": "Отчётность",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} заказать»"
+      },
+      {
+        "phrase": "сдача отчетности в фнс под ключ обзор",
+        "intent": "warm",
+        "cluster_hint": "Отчётность",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} обзор»"
+      },
+      {
+        "phrase": "сдача отчетности в фнс под ключ отзывы",
+        "intent": "warm",
+        "cluster_hint": "Отчётность",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} отзывы»"
+      },
+      {
+        "phrase": "сдача отчетности в фнс под ключ официальный сайт",
+        "intent": "navigational",
+        "cluster_hint": "Отчётность",
+        "source": "packages/connectors/src/keyword-ideas.ts: «{seed} официальный сайт»"
+      },
+      {
+        "phrase": "ведение бухгалтерии ип цена",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "ручной эталон: укороченная коммерческая формулировка, не маска брифа"
+      },
+      {
+        "phrase": "сколько стоит аутсорс бухгалтерии",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "ручной эталон: разговорный запрос о стоимости, синоним «цена»"
+      },
+      {
+        "phrase": "передать учет на аутсорс",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "ручной эталон: глагольный CTA, не шаблон мока"
+      },
+      {
+        "phrase": "бухгалтер для ип удаленно",
+        "intent": "hot",
+        "cluster_hint": "Аутсорсинг",
+        "source": "ручной эталон: ролевая разговорная формулировка"
+      }
+    ],
+    "global_negatives": [
+      {
+        "phrase": "бесплатно",
+        "source": "бриф global_negative_keywords"
+      },
+      {
+        "phrase": "вакансия",
+        "source": "бриф global_negative_keywords"
+      },
+      {
+        "phrase": "курсы",
+        "source": "бриф global_negative_keywords"
+      },
+      {
+        "phrase": "самоучитель",
+        "source": "бриф forbidden_phrases"
+      }
+    ]
+  },
+  "irrelevant": [
+    {
+      "phrase": "ремонт",
+      "match": "token",
+      "reason": "сервисный шаблон мока Wordstat",
+      "source": "packages/connectors/src/keyword-ideas.ts"
+    },
+    {
+      "phrase": "бесплатно",
+      "match": "token",
+      "reason": "глобальный минус брифа",
+      "source": "accounting-b2b brief"
+    },
+    {
+      "phrase": "вакансия",
+      "match": "token",
+      "reason": "глобальный минус брифа",
+      "source": "accounting-b2b brief"
+    },
+    {
+      "phrase": "курсы",
+      "match": "token",
+      "reason": "глобальный минус брифа",
+      "source": "accounting-b2b brief"
+    },
+    {
+      "phrase": "самоучитель",
+      "match": "token",
+      "reason": "forbidden_phrases брифа",
+      "source": "accounting-b2b brief"
+    }
+  ]
+}

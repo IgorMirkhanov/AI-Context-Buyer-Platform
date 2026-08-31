@@ -11,10 +11,12 @@ export type AgentTaskStatus = "pending" | "running" | "done" | "failed";
 
 export {
   runSemanticPipeline,
-  extractMasksStep,
   expandKeywordsStep,
-  labelIntentStep,
+  extractMasksStep,
+  filterKeywordsStep,
   generateNegativesStep,
+  labelIntentStep,
+  suggestNearIntentStep,
   clusterStep,
   finalizeStep,
 } from "./semantic/pipeline";
@@ -23,6 +25,16 @@ export { validateSemanticCore, SemanticCoreValidationError } from "./semantic/va
 export { SEMANTIC_CORE_JSON_SCHEMA } from "./semantic/schema";
 export { HeuristicSemanticLlm } from "./semantic/llm";
 export type { SemanticLlm } from "./semantic/llm";
+export { AnthropicSemanticLlm } from "./semantic/anthropic-llm";
+export {
+  resolveSemanticLlm,
+  SEMANTIC_HEURISTIC_FALLBACK_MESSAGE,
+} from "./semantic/resolve-llm";
+export type {
+  ResolveSemanticLlmOptions,
+  ResolveSemanticLlmResult,
+  SemanticLlmMode,
+} from "./semantic/resolve-llm";
 export {
   HashNgramEmbeddings,
   InMemoryVectorIndex,
@@ -30,7 +42,7 @@ export {
   cosine,
 } from "./semantic/embeddings";
 export type { EmbeddingsClient, VectorIndex } from "./semantic/embeddings";
-export { intentFromHeuristics, masksFromBrief } from "./semantic/heuristics";
+export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword } from "./semantic/heuristics";
 export {
   compareSemanticQa,
   matchesIrrelevant,
@@ -58,6 +70,16 @@ export type {
 
 export { HeuristicCopywriter, sanitizeClusterCreatives } from "./copywriting/generate";
 export type { Copywriter } from "./copywriting/generate";
+export { AnthropicCopywriter } from "./copywriting/anthropic-copywriter";
+export {
+  resolveCopywritingLlm,
+  COPYWRITING_HEURISTIC_FALLBACK_MESSAGE,
+} from "./copywriting/resolve-llm";
+export type {
+  CopywritingLlmMode,
+  ResolveCopywritingLlmOptions,
+  ResolveCopywritingLlmResult,
+} from "./copywriting/resolve-llm";
 export {
   clipToLimit,
   containsForbidden,
@@ -167,6 +189,16 @@ export type {
 
 export { buildOptimizationPlan } from "./optimization/build";
 export { HeuristicOptimizationLlm } from "./optimization/llm";
+export { AnthropicOptimizationLlm } from "./optimization/anthropic-llm";
+export {
+  resolveOptimizationLlm,
+  OPTIMIZATION_HEURISTIC_FALLBACK_MESSAGE,
+} from "./optimization/resolve-llm";
+export type {
+  OptimizationLlmMode,
+  ResolveOptimizationLlmOptions,
+  ResolveOptimizationLlmResult,
+} from "./optimization/resolve-llm";
 export {
   isWastedTerm,
   proposeRecommendations,
@@ -196,6 +228,7 @@ export type {
   OptimizationPlan,
   OptimizationRecommendation,
   OptimizationWriter,
+  OptimizationWrapResult,
   SearchTermInput,
 } from "./optimization/types";
 

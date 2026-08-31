@@ -296,10 +296,10 @@ test.describe("Этапы 10–17: пользовательский путь (he
     await openProjectTab(page, "Бриф");
     await page.getByPlaceholder("email клиента").fill(clientEmail);
     await page.getByRole("button", { name: "Пригласить" }).click();
-    const linkLine = page.getByText(/^Ссылка:/);
+    const linkLine = page.getByText(/^Ссылка для субклиента:/);
     await expect(linkLine).toBeVisible();
     const invitePath = (await linkLine.innerText())
-      .replace(/^Ссылка:\s*/, "")
+      .replace(/^Ссылка для субклиента:\s*/, "")
       .trim();
     expect(invitePath).toMatch(/^\/invite\?token=/);
 

@@ -19,10 +19,11 @@ import {
   aggregateMetrics,
   buildOptimizationPlan,
   evaluateAutopilotEligibility,
-  HeuristicOptimizationLlm,
   OptimizationAction,
   OptimizationPlanValidationError,
+  OptimizationLlmMode,
   resolveLlmCostUsd,
+  resolveOptimizationLlm,
 } from '@context-buyer/agents';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
@@ -61,7 +62,7 @@ export class OptimizationService implements OnModuleInit {
   }
 
   async run(organizationId: string, projectId: string) {
-    await this.ai.requireReady(organizationId);
+    const credentials = await this.ai.tryResolveOptional(organizationId);
     const project = await this.requireProject(organizationId, projectId);
     const campaigns = await this.prisma.campaign.findMany({
       where: { projectId },
@@ -127,30 +128,34 @@ export class OptimizationService implements OnModuleInit {
     });
 
     try {
-      const llm = new HeuristicOptimizationLlm();
-      const plan = buildOptimizationPlan(
+      const { writer, mode } = resolveOptimizationLlm({
+        apiKey: credentials?.apiKey ?? null,
+        onFallback: (message) => this.log.warn(message),
+      });
+      const plan = await buildOptimizationPlan(
         {
           period,
           targetCpl,
           campaigns: campaignInputs,
           searchTerms,
         },
-        llm,
+        writer,
       );
+      const wrapSample = plan.recommendations[0]?.rationale ?? '';
       await this.prisma.llmCallLog.create({
         data: {
           projectId,
           agentType: AgentType.optimization,
           step: 'wrap_rationale',
-          model: 'heuristic',
+          model: mode === 'anthropic' ? 'anthropic' : 'heuristic',
           prompt: JSON.stringify(plan.recommendations.map((item) => item.evidence)),
           response: plan.recommendations.map((item) => item.rationale).join('\n'),
-          inputTokens: 0,
-          outputTokens: 0,
+          inputTokens: Math.ceil(wrapSample.length / 4),
+          outputTokens: Math.ceil(wrapSample.length / 4),
           costUsd: resolveLlmCostUsd({
-            model: 'heuristic',
-            inputTokens: 0,
-            outputTokens: 0,
+            model: mode === 'anthropic' ? 'anthropic' : 'heuristic',
+            inputTokens: Math.ceil(wrapSample.length / 4),
+            outputTokens: Math.ceil(wrapSample.length / 4),
           }),
           latencyMs: 0,
         },
@@ -180,13 +185,13 @@ export class OptimizationService implements OnModuleInit {
         data: {
           status: AgentTaskStatus.done,
           finishedAt: new Date(),
-          outputRef: `recommendations:${plan.recommendations.length}`,
+          outputRef: `recommendations:${plan.recommendations.length}:${mode}`,
         },
       });
       if (project.autopilotEnabled) {
         await this.applyProposed(organizationId, projectId);
       }
-      return this.list(organizationId, projectId);
+      return { ...(await this.list(organizationId, projectId)), llmMode: mode };
     } catch (err) {
       const details =
         err instanceof OptimizationPlanValidationError
@@ -223,6 +228,7 @@ export class OptimizationService implements OnModuleInit {
     const eligibility = evaluateAutopilotEligibility(countRecs(recommendations));
     return {
       task: lastTask,
+      llmMode: parseOptimizationLlmMode(lastTask?.outputRef),
       autopilot: project.autopilotEnabled,
       autopilotEnabledAt: project.autopilotEnabledAt,
       eligibility,
@@ -592,6 +598,16 @@ function parsePeriod(): { from: string; to: string } {
     from: start.toISOString().slice(0, 10),
     to: end.toISOString().slice(0, 10),
   };
+}
+
+function parseOptimizationLlmMode(
+  outputRef: string | null | undefined,
+): OptimizationLlmMode | null {
+  if (!outputRef) return null;
+  if (outputRef.endsWith(':anthropic')) return 'anthropic';
+  if (outputRef.endsWith(':heuristic')) return 'heuristic';
+  if (outputRef.startsWith('recommendations:')) return 'heuristic';
+  return null;
 }
 
 function countRecs(
