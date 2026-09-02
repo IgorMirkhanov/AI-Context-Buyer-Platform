@@ -1,15 +1,41 @@
 import {
   AnthropicOptimizationLlm,
+  GeminiOptimizationLlm,
+  GroqOptimizationLlm,
   HeuristicOptimizationLlm,
   resolveOptimizationLlm,
   OPTIMIZATION_HEURISTIC_FALLBACK_MESSAGE,
 } from '@context-buyer/agents';
 
 describe('resolveOptimizationLlm', () => {
-  it('uses AnthropicOptimizationLlm when apiKey is present', () => {
-    const { writer, mode } = resolveOptimizationLlm({ apiKey: 'sk-ant-test' });
+  it('uses AnthropicOptimizationLlm when provider is anthropic', () => {
+    const { writer, mode } = resolveOptimizationLlm({
+      apiKey: 'sk-ant-test',
+      provider: 'anthropic',
+    });
     expect(mode).toBe('anthropic');
     expect(writer).toBeInstanceOf(AnthropicOptimizationLlm);
+  });
+
+  it('uses GroqOptimizationLlm when provider is groq', () => {
+    const { writer, mode } = resolveOptimizationLlm({
+      apiKey: 'gsk-test',
+      provider: 'groq',
+    });
+    expect(mode).toBe('groq');
+    expect(writer).toBeInstanceOf(GroqOptimizationLlm);
+    expect(writer).not.toBeInstanceOf(AnthropicOptimizationLlm);
+  });
+
+  it('uses GeminiOptimizationLlm when provider is gemini', () => {
+    const { writer, mode } = resolveOptimizationLlm({
+      apiKey: 'gemini-test',
+      provider: 'gemini',
+    });
+    expect(mode).toBe('gemini');
+    expect(writer).toBeInstanceOf(GeminiOptimizationLlm);
+    expect(writer).not.toBeInstanceOf(AnthropicOptimizationLlm);
+    expect(writer).not.toBeInstanceOf(GroqOptimizationLlm);
   });
 
   it('falls back to heuristic and calls onFallback without apiKey', () => {

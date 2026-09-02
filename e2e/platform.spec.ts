@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { fillCreateForm } from "./create-project";
+import { fillCreateForm, projectLink } from "./create-project";
 
 test.describe.configure({ mode: "serial" });
 
@@ -54,6 +54,7 @@ async function assertNoSecretsInDom(page: Page): Promise<void> {
 test.describe("Этапы 10–17: пользовательский путь (headless, моки)", () => {
   let page: Page;
   let browser: Browser;
+  let projectId: string;
 
   test.beforeAll(async ({ browser: workerBrowser }) => {
     browser = workerBrowser;
@@ -117,7 +118,7 @@ test.describe("Этапы 10–17: пользовательский путь (he
     ).toBeChecked();
     await shot(page, "after-portfolio");
 
-    await fillCreateForm(page, projectName, {
+    projectId = await fillCreateForm(page, projectName, {
       usp: "Быстрая поставка ноутбуков для офиса",
       audience: "IT-отделы компаний",
       negatives: "бесплатно, торрент",
@@ -134,9 +135,10 @@ test.describe("Этапы 10–17: пользовательский путь (he
     });
     await expect(pipelineBtn).toBeEnabled({ timeout: 15_000 });
     await pipelineBtn.click();
-    await expect(page.getByText("Стадия: awaiting_approval")).toBeVisible({
-      timeout: 120_000,
+    await expect(page.getByText("Черновик готов — проверьте и опубликуйте")).toBeVisible({
+      timeout: 300_000,
     });
+
     await openProjectTab(page, "Кампания");
     await expect(
       page.locator("section").filter({
@@ -157,18 +159,14 @@ test.describe("Этапы 10–17: пользовательский путь (he
     await expect(
       ads.getByText(/принято без правок: объявления \d+%, кластеры \d+%/),
     ).toBeVisible();
-    await expect(
-      ads.getByText(/сгенерировано по кластеру «.+»/).first(),
-    ).toBeVisible();
-    await expect(ads.getByText("правлен вручную")).toHaveCount(0);
+    await expect(ads.getByRole("heading", { name: "По кластерам" })).toBeVisible();
+    await expect(ads.getByText("#1").first()).toBeVisible();
 
-    const firstInput = ads.locator("table input").first();
+    const firstInput = ads.getByRole("textbox", { name: "Заголовок 1" }).first();
     const current = await firstInput.inputValue();
     await firstInput.fill(`${current} правка`);
     await firstInput.blur();
-    await expect(ads.getByText("правлен вручную").first()).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(firstInput).toHaveValue(`${current} правка`);
     await expect(
       ads.getByText(/принято без правок: объявления \d+%, кластеры \d+%/),
     ).toBeVisible();
@@ -196,10 +194,14 @@ test.describe("Этапы 10–17: пользовательский путь (he
     const report = page.locator("section").filter({
       has: page.getByRole("heading", { name: "Отчёт" }),
     });
-    await expect(report.getByText("Показы", { exact: true })).toBeVisible({
+    await expect(report.getByText("Потрачено за 7 дней")).toBeVisible({
       timeout: 30_000,
     });
-    await expect(report.getByText("Клики", { exact: true })).toBeVisible();
+    await expect(report.locator("p.text-2xl")).toContainText(/₽/);
+    await expect(report.locator("p.text-xs", { hasText: "Показы" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(report.locator("p.text-xs", { hasText: "Клики" })).toBeVisible();
     await expect(report.locator("ul li").first()).toBeVisible();
     await expect(report.getByText(/CTR .+% · CPC /)).toBeVisible();
     await shot(page, "after-analytics");
@@ -291,7 +293,7 @@ test.describe("Этапы 10–17: пользовательский путь (he
     ).toBeVisible();
     await expect(page.getByText(productName).first()).toBeVisible();
 
-    await page.getByRole("link", { name: projectName }).click();
+    await projectLink(page, projectId).click();
     await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     await openProjectTab(page, "Бриф");
     await page.getByPlaceholder("email клиента").fill(clientEmail);
@@ -324,10 +326,10 @@ test.describe("Этапы 10–17: пользовательский путь (he
       clientPage.getByRole("heading", { name: "White-label" }),
     ).toHaveCount(0);
     await expect(
-      clientPage.getByRole("link", { name: projectName }),
+      projectLink(clientPage, projectId),
     ).toHaveCount(1);
 
-    await clientPage.getByRole("link", { name: projectName }).click();
+    await projectLink(clientPage, projectId).click();
     await expect(clientPage.getByText(/только просмотр/)).toBeVisible();
     await expect(
       clientPage.getByText(/Кабинет в режиме просмотра/),

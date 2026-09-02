@@ -1,7 +1,25 @@
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { config as loadEnv } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { AppModule } from './app.module';
+
+function bootstrapEnv(): void {
+  const candidates = [
+    join(__dirname, '../../../.env'),
+    join(process.cwd(), '.env'),
+    join(process.cwd(), '../../.env'),
+  ];
+  for (const envPath of candidates) {
+    if (existsSync(envPath)) {
+      loadEnv({ path: envPath });
+    }
+  }
+}
+
+bootstrapEnv();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

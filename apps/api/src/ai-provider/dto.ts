@@ -1,8 +1,8 @@
 import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpsertAiProviderDto {
-  @IsIn(['anthropic', 'openai'])
-  provider!: 'anthropic' | 'openai';
+  @IsIn(['anthropic', 'openai', 'groq', 'gemini'])
+  provider!: 'anthropic' | 'openai' | 'groq' | 'gemini';
 
   @IsString()
   @MinLength(8)
@@ -10,8 +10,8 @@ export class UpsertAiProviderDto {
 }
 
 export class VerifyAiProviderDto {
-  @IsIn(['anthropic', 'openai'])
-  provider!: 'anthropic' | 'openai';
+  @IsIn(['anthropic', 'openai', 'groq', 'gemini'])
+  provider!: 'anthropic' | 'openai' | 'groq' | 'gemini';
 
   @IsOptional()
   @IsString()

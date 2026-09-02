@@ -26,6 +26,18 @@ export interface SemanticLlm {
     brief: SemanticBriefInput,
     wordstatPhrases: string[],
   ): Promise<{ phrases: string[]; usage: LlmUsage }>;
+  suggestFromSeedWords(
+    brief: SemanticBriefInput,
+    seedWords: string[],
+    existingPhrases: string[],
+  ): Promise<{ phrases: string[]; usage: LlmUsage }>;
+  suggestNegativeWords(
+    brief: SemanticBriefInput,
+    collectedKeywords: string[],
+  ): Promise<{
+    negatives: Array<{ phrase: string; reason: string }>;
+    usage: LlmUsage;
+  }>;
 }
 
 function usage(
@@ -123,6 +135,42 @@ export class HeuristicSemanticLlm implements SemanticLlm {
         "suggest_near_intent",
         "",
         JSON.stringify({ phrases: [] }),
+        Date.now() - started,
+      ),
+    };
+  }
+
+  async suggestFromSeedWords(
+    _brief: SemanticBriefInput,
+    _seedWords: string[],
+    _existingPhrases: string[],
+  ): Promise<{ phrases: string[]; usage: LlmUsage }> {
+    const started = Date.now();
+    return {
+      phrases: [],
+      usage: usage(
+        "suggest_from_seed_words",
+        "",
+        JSON.stringify({ phrases: [] }),
+        Date.now() - started,
+      ),
+    };
+  }
+
+  async suggestNegativeWords(
+    _brief: SemanticBriefInput,
+    _collectedKeywords: string[],
+  ): Promise<{
+    negatives: Array<{ phrase: string; reason: string }>;
+    usage: LlmUsage;
+  }> {
+    const started = Date.now();
+    return {
+      negatives: [],
+      usage: usage(
+        "suggest_negative_words",
+        "",
+        JSON.stringify({ negatives: [] }),
         Date.now() - started,
       ),
     };

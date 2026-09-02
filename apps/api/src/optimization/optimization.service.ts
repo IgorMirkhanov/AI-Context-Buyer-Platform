@@ -24,6 +24,11 @@ import {
   OptimizationLlmMode,
   resolveLlmCostUsd,
   resolveOptimizationLlm,
+  optimizationComparePeriods,
+  nextOptimizationAfterRun,
+  initialOptimizationNextRun,
+  isOptimizationDue,
+  type AdGroupPerfInput,
 } from '@context-buyer/agents';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
@@ -57,30 +62,163 @@ export class OptimizationService implements OnModuleInit {
     this.queue.register('autopilot', async () => {
       await this.runAutopilotProjects();
     });
-    const ms = Number(this.config.get('AUTOPILOT_POLL_MS') ?? 0);
-    await this.queue.schedule('autopilot', ms);
+    this.queue.register('optimization_scan', async () => {
+      await this.scanDueOptimizationProjects();
+    });
+    this.queue.register('optimization_run', async (job) => {
+      if (!job.organizationId || !job.projectId) {
+        throw new Error('optimization_run job is missing organizationId/projectId');
+      }
+      await this.runScheduled(job.organizationId, job.projectId, 'scheduled');
+    });
+    const autopilotMs = Number(this.config.get('AUTOPILOT_POLL_MS') ?? 0);
+    await this.queue.schedule('autopilot', autopilotMs);
+    const scanMs = Number(
+      this.config.get('OPTIMIZATION_SCAN_MS') ?? 6 * 60 * 60 * 1000,
+    );
+    await this.queue.schedule('optimization_scan', scanMs);
+  }
+
+  async scheduleOnLaunch(organizationId: string, projectId: string) {
+    const project = await this.requireProject(organizationId, projectId);
+    const now = new Date();
+    const launchedAt = project.optimizationLaunchedAt ?? now;
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        optimizationLaunchedAt: launchedAt,
+        optimizationNextRunAt: initialOptimizationNextRun(launchedAt),
+      },
+    });
+    await this.queue.enqueueBackground({
+      kind: 'optimization_run',
+      organizationId,
+      projectId,
+    });
+  }
+
+  async scanDueOptimizationProjects() {
+    const now = new Date();
+    const projects = await this.prisma.project.findMany({
+      where: {
+        optimizationLaunchedAt: { not: null },
+        campaigns: { some: {} },
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        optimizationLaunchedAt: true,
+        optimizationNextRunAt: true,
+      },
+    });
+    for (const project of projects) {
+      if (
+        !isOptimizationDue(
+          project.optimizationLaunchedAt,
+          project.optimizationNextRunAt,
+          now,
+        )
+      ) {
+        continue;
+      }
+      try {
+        await this.queue.enqueueBackground({
+          kind: 'optimization_run',
+          organizationId: project.organizationId,
+          projectId: project.id,
+        });
+      } catch (err) {
+        this.log.warn(
+          err instanceof Error
+            ? err.message
+            : 'optimization_scan enqueue failed',
+        );
+      }
+    }
+  }
+
+  async runScheduled(
+    organizationId: string,
+    projectId: string,
+    trigger: 'launch' | 'scheduled',
+  ) {
+    const project = await this.requireProject(organizationId, projectId);
+    const previousLastRunAt = project.optimizationLastRunAt;
+    const launchedAt = project.optimizationLaunchedAt;
+    if (!launchedAt) {
+      return null;
+    }
+    try {
+      const result = await this.runCore(organizationId, projectId, trigger);
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: {
+          optimizationLastRunAt: new Date(),
+          optimizationNextRunAt: nextOptimizationAfterRun(
+            launchedAt,
+            previousLastRunAt,
+            new Date(),
+          ),
+        },
+      });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'optimization failed';
+      if (/snapshots first|Collect performance/i.test(message)) {
+        await this.prisma.project.update({
+          where: { id: projectId },
+          data: {
+            optimizationNextRunAt: nextOptimizationAfterRun(
+              launchedAt,
+              previousLastRunAt,
+              new Date(),
+            ),
+          },
+        });
+        this.log.warn(
+          `optimization skipped for ${projectId} (no snapshots yet): ${message}`,
+        );
+        return null;
+      }
+      throw err;
+    }
   }
 
   async run(organizationId: string, projectId: string) {
+    return this.runCore(organizationId, projectId, 'manual');
+  }
+
+  private async runCore(
+    organizationId: string,
+    projectId: string,
+    trigger: 'manual' | 'launch' | 'scheduled',
+  ) {
     const credentials = await this.ai.tryResolveOptional(organizationId);
     const project = await this.requireProject(organizationId, projectId);
     const campaigns = await this.prisma.campaign.findMany({
       where: { projectId },
     });
     if (campaigns.length === 0) {
-      throw new BadRequestException('Publish a campaign first');
+      throw new BadRequestException(
+        'Сначала опубликуйте кампанию на вкладке «Кампания»',
+      );
     }
-    const period = parsePeriod();
+    const periods = optimizationComparePeriods();
     const snapshots = await this.prisma.performanceSnapshot.findMany({
       where: {
         projectId,
         date: {
-          gte: new Date(`${period.from}T00:00:00.000Z`),
-          lte: new Date(`${period.to}T00:00:00.000Z`),
+          gte: new Date(`${periods.prior.from}T00:00:00.000Z`),
+          lte: new Date(`${periods.current.to}T00:00:00.000Z`),
         },
       },
     });
-    if (snapshots.length === 0) {
+    const currentSnapshots = snapshots.filter(
+      (row) =>
+        row.date.toISOString().slice(0, 10) >= periods.current.from &&
+        row.date.toISOString().slice(0, 10) <= periods.current.to,
+    );
+    if (currentSnapshots.length === 0) {
       throw new BadRequestException('Collect performance snapshots first');
     }
 
@@ -93,7 +231,7 @@ export class OptimizationService implements OnModuleInit {
       0;
 
     const campaignInputs = campaigns.map((campaign) => {
-      const rows = snapshots
+      const rows = currentSnapshots
         .filter((row) => row.campaignId === campaign.id)
         .map((row) => ({
           date: row.date.toISOString().slice(0, 10),
@@ -110,10 +248,17 @@ export class OptimizationService implements OnModuleInit {
       };
     });
 
+    const adGroups = buildAdGroupInputs(
+      campaigns,
+      snapshots,
+      periods.current,
+      periods.prior,
+    );
+
     const searchTerms = await this.loadSearchTerms(
       projectId,
       project.primaryPlatform,
-      period,
+      periods.current,
       campaigns.map((item) => item.externalCampaignId),
     );
 
@@ -123,21 +268,24 @@ export class OptimizationService implements OnModuleInit {
         agentType: AgentType.optimization,
         status: AgentTaskStatus.running,
         startedAt: new Date(),
-        inputRef: `${period.from}:${period.to}`,
+        inputRef: `${trigger}:${periods.current.from}:${periods.current.to}`,
       },
     });
 
     try {
       const { writer, mode } = resolveOptimizationLlm({
         apiKey: credentials?.apiKey ?? null,
+        provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
       const plan = await buildOptimizationPlan(
         {
-          period,
+          period: periods.current,
+          priorPeriod: periods.prior,
           targetCpl,
           campaigns: campaignInputs,
           searchTerms,
+          adGroups,
         },
         writer,
       );
@@ -147,13 +295,13 @@ export class OptimizationService implements OnModuleInit {
           projectId,
           agentType: AgentType.optimization,
           step: 'wrap_rationale',
-          model: mode === 'anthropic' ? 'anthropic' : 'heuristic',
+          model: mode === 'heuristic' ? 'heuristic' : mode,
           prompt: JSON.stringify(plan.recommendations.map((item) => item.evidence)),
           response: plan.recommendations.map((item) => item.rationale).join('\n'),
           inputTokens: Math.ceil(wrapSample.length / 4),
           outputTokens: Math.ceil(wrapSample.length / 4),
           costUsd: resolveLlmCostUsd({
-            model: mode === 'anthropic' ? 'anthropic' : 'heuristic',
+            model: mode === 'heuristic' ? 'heuristic' : mode,
             inputTokens: Math.ceil(wrapSample.length / 4),
             outputTokens: Math.ceil(wrapSample.length / 4),
           }),
@@ -231,6 +379,9 @@ export class OptimizationService implements OnModuleInit {
       llmMode: parseOptimizationLlmMode(lastTask?.outputRef),
       autopilot: project.autopilotEnabled,
       autopilotEnabledAt: project.autopilotEnabledAt,
+      optimizationLaunchedAt: project.optimizationLaunchedAt,
+      optimizationLastRunAt: project.optimizationLastRunAt,
+      optimizationNextRunAt: project.optimizationNextRunAt,
       eligibility,
       recommendations: recommendations.map((row) => ({
         id: row.id,
@@ -589,15 +740,75 @@ export class OptimizationService implements OnModuleInit {
   }
 }
 
-function parsePeriod(): { from: string; to: string } {
-  const end = new Date();
-  end.setUTCDate(end.getUTCDate() - 1);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - 6);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
+function buildAdGroupInputs(
+  campaigns: Array<{ id: string; externalCampaignId: string }>,
+  snapshots: Array<{
+    campaignId: string;
+    adGroupExternalId: string;
+    adGroupName: string | null;
+    date: Date;
+    impressions: number;
+    clicks: number;
+    spend: unknown;
+    conversions: number;
+  }>,
+  current: { from: string; to: string },
+  prior: { from: string; to: string },
+): AdGroupPerfInput[] {
+  const externalByCampaignId = new Map(
+    campaigns.map((item) => [item.id, item.externalCampaignId]),
+  );
+  const groups = new Map<
+    string,
+    {
+      campaignId: string;
+      externalCampaignId: string;
+      adGroupExternalId: string;
+      adGroupName: string;
+      currentRows: Parameters<typeof aggregateMetrics>[0];
+      priorRows: Parameters<typeof aggregateMetrics>[0];
+    }
+  >();
+
+  for (const row of snapshots) {
+    if (!externalByCampaignId.has(row.campaignId)) continue;
+    if (!row.adGroupExternalId) continue;
+    const key = `${row.campaignId}:${row.adGroupExternalId}`;
+    const date = row.date.toISOString().slice(0, 10);
+    let bucket = groups.get(key);
+    if (!bucket) {
+      bucket = {
+        campaignId: row.campaignId,
+        externalCampaignId: externalByCampaignId.get(row.campaignId)!,
+        adGroupExternalId: row.adGroupExternalId,
+        adGroupName: row.adGroupName ?? row.adGroupExternalId,
+        currentRows: [],
+        priorRows: [],
+      };
+      groups.set(key, bucket);
+    }
+    const daily = {
+      date,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      spend: Number(row.spend),
+      conversions: row.conversions,
+    };
+    if (date >= current.from && date <= current.to) {
+      bucket.currentRows.push(daily);
+    } else if (date >= prior.from && date <= prior.to) {
+      bucket.priorRows.push(daily);
+    }
+  }
+
+  return [...groups.values()].map((group) => ({
+    campaignId: group.campaignId,
+    externalCampaignId: group.externalCampaignId,
+    adGroupExternalId: group.adGroupExternalId,
+    adGroupName: group.adGroupName,
+    current: aggregateMetrics(group.currentRows),
+    prior: aggregateMetrics(group.priorRows),
+  }));
 }
 
 function parseOptimizationLlmMode(
@@ -605,6 +816,8 @@ function parseOptimizationLlmMode(
 ): OptimizationLlmMode | null {
   if (!outputRef) return null;
   if (outputRef.endsWith(':anthropic')) return 'anthropic';
+  if (outputRef.endsWith(':groq')) return 'groq';
+  if (outputRef.endsWith(':gemini')) return 'gemini';
   if (outputRef.endsWith(':heuristic')) return 'heuristic';
   if (outputRef.startsWith('recommendations:')) return 'heuristic';
   return null;

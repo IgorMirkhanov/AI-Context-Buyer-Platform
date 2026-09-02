@@ -109,7 +109,7 @@ describe('AiProviderService', () => {
     });
     const status = await service.getStatus('org-1');
     expect(JSON.stringify(status)).not.toContain('sk-secret-value');
-    expect(status.providers[1].keyHint).toBe(maskApiKey('sk-secret-value'));
+    expect(status.providers[3].keyHint).toBe(maskApiKey('sk-secret-value'));
     expect(status.ready).toBe(true);
   });
 
@@ -145,5 +145,41 @@ describe('AiProviderService', () => {
     await expect(service.requireReady('org-1')).rejects.toThrow(
       AI_PROVIDER_REQUIRED_MESSAGE,
     );
+  });
+
+  it('verifies groq keys via OpenAI-compatible models endpoint', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => '[]',
+    } as Response);
+    const ok = await service.verify('org-1', 'groq', 'gsk-test');
+    expect(ok.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.groq.com/openai/v1/models',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer gsk-test',
+        }),
+      }),
+    );
+    fetchSpy.mockRestore();
+  });
+
+  it('verifies gemini keys via OpenAI-compatible models endpoint', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => '[]',
+    } as Response);
+    const ok = await service.verify('org-1', 'gemini', 'gemini-test');
+    expect(ok.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/models',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer gemini-test',
+        }),
+      }),
+    );
+    fetchSpy.mockRestore();
   });
 });

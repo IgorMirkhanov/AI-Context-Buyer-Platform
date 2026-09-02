@@ -8,7 +8,9 @@ export type BackgroundJobKind =
   | "token_refresh"
   | "performance_collect"
   | "autopilot"
-  | "ops_alerts";
+  | "ops_alerts"
+  | "optimization_scan"
+  | "optimization_run";
 
 export type PipelineJob = {
   organizationId: string;

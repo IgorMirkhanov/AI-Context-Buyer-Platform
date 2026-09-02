@@ -5,12 +5,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { PortfolioService } from './portfolio.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { UpsertBriefDto } from './dto/upsert-brief.dto';
 import { SetFavoriteDto } from './dto/set-favorite.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload';
@@ -56,6 +58,15 @@ export class ProjectsController {
   @Post()
   create(@Req() req: { user: JwtPayload }, @Body() dto: CreateProjectDto) {
     return this.projects.createForOrganization(req.user, dto);
+  }
+
+  @Put(':id/brief')
+  upsertBrief(
+    @Req() req: { user: JwtPayload },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpsertBriefDto,
+  ) {
+    return this.projects.upsertBrief(req.user.organizationId, id, dto);
   }
 
   @Post(':id/oauth/yandex')

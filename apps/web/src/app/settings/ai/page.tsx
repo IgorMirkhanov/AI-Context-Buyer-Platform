@@ -11,7 +11,7 @@ import { Alert } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { ErrorState, PageSkeleton } from "@/ui/states";
 
-type ProviderName = "anthropic" | "openai";
+type ProviderName = "anthropic" | "openai" | "groq" | "gemini";
 
 type ProviderStatus = {
   provider: ProviderName;
@@ -39,6 +39,8 @@ type Me = {
 const LABELS: Record<ProviderName, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
+  groq: "Groq",
+  gemini: "Gemini",
 };
 
 function providerBadge(item: ProviderStatus) {
@@ -173,7 +175,8 @@ export default function AiProviderSettingsPage() {
       <h2 className="mb-4 text-lg font-medium">ИИ-провайдер</h2>
       <p className="mb-4 text-sm text-[var(--fg-muted)]">
         Ключ хранится в организации (AES-256-GCM), не в проекте и не в логах.
-        Локально и в CI можно задать <code>ANTHROPIC_API_KEY</code> /{" "}
+        Локально и в CI можно задать <code>ANTHROPIC_API_KEY</code>,{" "}
+        <code>GROQ_API_KEY</code>, <code>GEMINI_API_KEY</code> /{" "}
         <code>OPENAI_API_KEY</code> — в проде приоритет у ключа из этой формы.
       </p>
 
@@ -221,6 +224,8 @@ export default function AiProviderSettingsPage() {
                 onChange={(e) => setProvider(e.target.value as ProviderName)}
               >
                 <option value="anthropic">Anthropic</option>
+                <option value="groq">Groq</option>
+                <option value="gemini">Gemini</option>
                 <option value="openai">OpenAI</option>
               </select>
             </label>

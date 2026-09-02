@@ -153,6 +153,81 @@ export class PipelineQueue implements OnModuleInit, OnModuleDestroy {
     return { jobId, queued: true };
   }
 
+  async enqueueBackground(
+    job: QueueJob,
+  ): Promise<{ jobId: string; queued: boolean }> {
+    const kind = job.kind ?? 'pipeline_run';
+    if (kind === 'pipeline_run') {
+      if (!job.organizationId || !job.projectId) {
+        throw new Error('Pipeline job is missing organizationId/projectId');
+      }
+      return this.enqueue({
+        organizationId: job.organizationId,
+        projectId: job.projectId,
+      });
+    }
+    const jobId = `${kind}:${job.projectId ?? 'global'}:${Date.now()}`;
+    if (this.mode === 'inline') {
+      await this.dispatch(kind, job);
+      return { jobId, queued: false };
+    }
+    if (!this.queue) {
+      throw new Error(
+        'BullMQ is not connected; start Redis or set PIPELINE_QUEUE=inline',
+      );
+    }
+    await this.queue.add(kind, job, {
+      jobId,
+      attempts: PIPELINE_QUEUE_ATTEMPTS,
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: { count: 50 },
+      removeOnFail: { count: 100 },
+    });
+    return { jobId, queued: true };
+  }
+
+  async cancel(projectId: string): Promise<boolean> {
+    const jobId = pipelineJobId(projectId);
+    if (this.mode === 'inline' || !this.queue) {
+      const row = this.memory.get(jobId);
+      if (!row || row.status === 'idle' || row.status === 'completed') {
+        return false;
+      }
+      this.memory.set(jobId, {
+        job: row.job,
+        status: 'idle',
+        failedReason: null,
+      });
+      return true;
+    }
+    const job = await this.queue.getJob(jobId);
+    if (!job) return false;
+    const state = String(await job.getState());
+    if (
+      state === 'waiting' ||
+      state === 'delayed' ||
+      state === 'paused' ||
+      state === 'prioritized' ||
+      state === 'waiting-children'
+    ) {
+      await job.remove();
+      return true;
+    }
+    if (state === 'active') {
+      try {
+        await job.moveToFailed(new Error('Отменено пользователем'), '0');
+      } catch {
+        await job.remove();
+      }
+      return true;
+    }
+    if (state === 'failed') {
+      await job.remove();
+      return true;
+    }
+    return false;
+  }
+
   async schedule(kind: BackgroundJobKind, everyMs: number) {
     if (kind === 'pipeline_run') {
       throw new Error('pipeline_run is enqueued per project, not on a timer');

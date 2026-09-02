@@ -7,13 +7,52 @@ const HOT_MARKERS = [
   "купить",
   "цена",
   "заказать",
+  "записаться",
   "стоимость",
-  "заказать",
   "доставка",
   "наличие",
 ];
 const WARM_MARKERS = ["обзор", "отзыв", "сравнен", "какой", "рейтинг", "лучш"];
 const NAV_MARKERS = ["официальный сайт", "сайт", "бренд", "логотип"];
+
+/** Явные коммерческие триггеры (услуга + гео + цена в одной фразе). */
+export const COMMERCIAL_TRIGGERS = [
+  "купить",
+  "заказать",
+  "записаться",
+  "стоимость",
+  "цена",
+  "доставка",
+  "наличие",
+] as const;
+
+/** Обзорные/навигационные маркеры — не коммерческие, даже при warm/hot. */
+const NON_COMMERCIAL_MARKERS = [
+  ...NAV_MARKERS,
+  "обзор",
+  "отзыв",
+  "отзывы",
+  "рейтинг",
+  "сравнен",
+  "какой",
+  "лучш",
+];
+
+const GEO_LABELS: Record<string, string> = {
+  RU: "россия",
+  "RU-MOW": "москва",
+  "RU-SPE": "санкт-петербург",
+  "RU-SPB": "санкт-петербург",
+  "RU-KDA": "краснодар",
+  "RU-SVE": "екатеринбург",
+  "RU-NVS": "новосибирск",
+  KZ: "казахстан",
+  "KZ-ALA": "алматы",
+  BY: "беларусь",
+  UA: "украина",
+};
+
+const GEO_PRICE_SUFFIXES = ["цена", "стоимость"] as const;
 
 /**
  * Общеупотребимые intent-модификаторы: при кластеризации hash-n-gram
@@ -50,6 +89,26 @@ export function phraseClusteringCore(phrase: string): string {
 
 export function isIntentTailKeyword(intent: KeywordIntent): boolean {
   return intent === "navigational" || intent === "warm";
+}
+
+export function isCommercialKeyword(
+  phrase: string,
+  intent?: KeywordIntent,
+): boolean {
+  const p = phrase.toLowerCase();
+  if (intent === "navigational") {
+    return false;
+  }
+  if (NON_COMMERCIAL_MARKERS.some((marker) => p.includes(marker))) {
+    return false;
+  }
+  if (intent === "hot") {
+    return true;
+  }
+  if (COMMERCIAL_TRIGGERS.some((marker) => p.includes(marker))) {
+    return true;
+  }
+  return false;
 }
 
 export function intentFromHeuristics(phrase: string): KeywordIntent | null {
@@ -116,6 +175,52 @@ export function deriveMasksFromUsp(usp: string): string[] {
   return [...derived].filter((mask) => mask.length >= 3);
 }
 
+/** Код гео из брифа → слово для слитных коммерческих масок. */
+export function geoLabelFromBriefCode(code: string): string | null {
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return null;
+  if (GEO_LABELS[normalized]) {
+    return GEO_LABELS[normalized];
+  }
+  const tail = normalized.split("-").pop()?.toLowerCase();
+  if (!tail || tail.length < 3) return null;
+  return tail;
+}
+
+/** Слитные гео+цена маски: «{услуга} {город} цена», «купить {услуга} {город}». */
+export function combinedGeoCommercialMasks(
+  servicePhrases: string[],
+  geo: string[],
+): string[] {
+  const cities = [
+    ...new Set(
+      geo
+        .map((code) => geoLabelFromBriefCode(code))
+        .filter((label): label is string => Boolean(label)),
+    ),
+  ];
+  if (cities.length === 0) {
+    return [];
+  }
+  const services = [
+    ...new Set(
+      servicePhrases
+        .map((item) => normalizeMask(item))
+        .filter((item) => item.length >= 3),
+    ),
+  ];
+  const masks: string[] = [];
+  for (const service of services) {
+    for (const city of cities) {
+      for (const suffix of GEO_PRICE_SUFFIXES) {
+        masks.push(`${service} ${city} ${suffix}`);
+      }
+      masks.push(`купить ${service} ${city}`);
+    }
+  }
+  return masks;
+}
+
 export function masksFromBrief(
   brief: SemanticBriefInput,
   landingText = "",
@@ -134,6 +239,13 @@ export function masksFromBrief(
       push(derived);
     }
   }
+  const serviceSeeds = [
+    ...brief.usp,
+    ...brief.usp.flatMap((usp) => deriveMasksFromUsp(usp)),
+  ];
+  for (const combined of combinedGeoCommercialMasks(serviceSeeds, brief.geo)) {
+    push(combined);
+  }
   if (brief.product_description) {
     push(brief.product_description.split(/[.!]/)[0] ?? "");
   }
@@ -143,7 +255,7 @@ export function masksFromBrief(
     }
   }
 
-  return Array.from(new Set(masks)).slice(0, 20);
+  return Array.from(new Set(masks)).slice(0, 30);
 }
 
 export function phraseMatchesNegatives(

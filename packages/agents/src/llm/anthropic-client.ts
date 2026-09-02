@@ -13,9 +13,12 @@ export type AnthropicClientOptions = {
   apiKey: string;
   model?: string;
   fetchImpl?: typeof fetch;
+  /** Request timeout in ms (default 8000, same as AiProviderService ping). */
+  timeoutMs?: number;
 };
 
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_TIMEOUT_MS = 8000;
 
 export async function anthropicMessages(
   options: AnthropicClientOptions & {
@@ -27,6 +30,7 @@ export async function anthropicMessages(
   const started = Date.now();
   const model = options.model ?? DEFAULT_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const res = await fetchImpl("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -40,6 +44,7 @@ export async function anthropicMessages(
       system: options.system,
       messages: [{ role: "user", content: options.user }],
     }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const raw = await res.text();
   if (!res.ok) {

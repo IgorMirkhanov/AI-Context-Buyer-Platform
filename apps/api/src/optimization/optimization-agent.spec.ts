@@ -8,6 +8,7 @@ import {
   OPTIMIZATION_THRESHOLDS,
   OptimizationWriter,
   shouldCutBudget,
+  shouldFlagCtrDrop,
   shouldPause,
 } from '@context-buyer/agents';
 
@@ -77,12 +78,41 @@ describe('Optimization Agent rules', () => {
       }),
     ).toBe(false);
   });
+  it('flags CTR drop on ad group with period comparison', () => {
+    expect(
+      shouldFlagCtrDrop({
+        campaignId: 'camp-1',
+        externalCampaignId: '555',
+        adGroupExternalId: 'ag-1',
+        adGroupName: 'Группа A',
+        prior: aggregateMetrics([
+          {
+            date: '2026-08-18',
+            impressions: 500,
+            clicks: 25,
+            spend: 200,
+            conversions: 1,
+          },
+        ]),
+        current: aggregateMetrics([
+          {
+            date: '2026-08-25',
+            impressions: 500,
+            clicks: 10,
+            spend: 200,
+            conversions: 1,
+          },
+        ]),
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('Optimization Agent plan', () => {
   it('builds proposed actions with computed figures in the rationale', async () => {
     const plan = await buildOptimizationPlan({
       period: { from: '2026-08-20', to: '2026-08-26' },
+      priorPeriod: { from: '2026-08-13', to: '2026-08-19' },
       targetCpl: 300,
       campaigns: [campaignZeroConv, campaignExpensiveCpl],
       searchTerms: [
@@ -132,6 +162,7 @@ describe('Optimization Agent plan', () => {
       buildOptimizationPlan(
         {
           period: { from: '2026-08-20', to: '2026-08-26' },
+          priorPeriod: { from: '2026-08-13', to: '2026-08-19' },
           targetCpl: 300,
           campaigns: [campaignZeroConv],
           searchTerms: [],

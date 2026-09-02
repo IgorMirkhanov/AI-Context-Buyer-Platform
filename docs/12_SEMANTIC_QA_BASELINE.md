@@ -11,6 +11,32 @@
 npm run qa:semantic
 ```
 
+Сравнение с `AnthropicSemanticLlm` (два режима replay, без живого API в CI):
+
+```
+# Pipeline recall при идеальном near-intent (регрессия плёнки данных)
+npm run qa:semantic -- --llm-ideal
+
+# Recall с записанным ответом Claude (живой прогон → qa/semantic/llm-replay/)
+npm run qa:semantic -- --llm
+```
+
+Запись живого ответа Claude (разовый ручной прогон, не CI):
+
+```
+$env:ANTHROPIC_API_KEY='sk-ant-...'
+npm run qa:semantic:record-llm
+```
+
+По умолчанию Haiku (`claude-3-5-haiku-20241022`); override: `QA_RECORD_MODEL`.
+
+| Каталог | Назначение |
+|---------|------------|
+| `qa/semantic/llm-replay-ideal/` | 4 gold near-intent фразы вручную — **идеальный** ответ для регрессии пайплайна |
+| `qa/semantic/llm-replay/` | **Реальный** ответ `suggestNearIntentPhrases` с живого API (`source: claude_live`) |
+
+Это **две разные метрики**, не путать.
+
 Эталоны: `qa/semantic/fixtures/*.json`. Сравнение: `packages/agents/src/semantic/qa-compare.ts`.
 
 ## Откуда эталоны (не от LLM)
@@ -138,44 +164,84 @@ intent**, а не недостающая маска:
 Место в пайплайне (`packages/agents/src/semantic/pipeline.ts`, после `filterKeywordsStep`):
 
 ```
-Wordstat(masks) → filter → [LLM: near-intent фразы] → re-filter → labelIntent → cluster
+Wordstat(masks) → [LLM: seed expand] → filter → [LLM: near-intent фразы] → re-filter → labelIntent → cluster
 ```
 
-Реализация (2026-08-31):
+Реализация (2026-08-31 / 2026-09-01):
 
 - `packages/agents/src/semantic/anthropic-llm.ts` — `AnthropicSemanticLlm` (интерфейс `SemanticLlm`)
 - `packages/agents/src/semantic/resolve-llm.ts` — выбор LLM по наличию ключа
 - `apps/api/src/semantic/semantic.service.ts` — `tryResolveOptional` + `llmMode` в ответе
 - Подсказки near-intent: `source: llm_near_intent`, `frequency: 1`; повторный `filterKeywordsStep`
   отсекает минусы и дубли
+- **Ручные seed-слова** (вкладка «Анализ»): `suggestFromSeedWords(brief, seedWords, existing)` →
+  `source: llm_seed_expand`, в UI метка **«предложено ИИ»** (отдельно от Wordstat / Google KP)
+- Реальный **Google Keyword Planner** — не в MVP: нужен Developer Token Google Ads API
+  (заявка в Google, сроки вне платформы). До подключения KP расширение ручных seed — через LLM.
 - При ошибке Anthropic API отдельные шаги LLM деградируют на heuristic внутри `AnthropicSemanticLlm`
 
 **Baseline QA не меняется:** `npm run qa:semantic` по-прежнему гоняет
 `HeuristicSemanticLlm` + `MockKeywordIdeasProvider` — это законный сценарий
 «организация без ИИ-провайдера».
 
-## Поведение с реальным LLM (Prompt 12 — TBD)
+## Pipeline recall при идеальном LLM-ответе (replay-ideal, 2026-08-31)
 
-Когда будет готов **Промпт 12** (финальные system/user-промпты для семантики),
-ожидается отдельный прогон QA **с** `AnthropicSemanticLlm` и фиксация нового
-baseline recall на контрольных фикстурах `orthodontics-clinic` и
-`accounting-b2b` (цель — закрыть 4 near-intent фразы на каждой, без нишевых `if`).
+Прогон: `npm run qa:semantic -- --llm-ideal` — регрессионный тест **плёнки
+данных**: near-intent в `llm-replay-ideal/` = 4 ручные gold-фразы на control-нишах.
+Проверяет, что пайплайн **умеет** принять идеальный ответ LLM, а не качество Claude.
 
-До Prompt 12:
+| Фикстура | Recall (heuristic) | Recall (ideal replay) | Precision | Intra − inter | Эталон / агент |
+|----------|-------------------|------------------------|-----------|---------------|----------------|
+| accounting-b2b | 77.8% (14/18) | **100% (18/18)** | 100% | 0.4167 | 18 / 25 |
+| asus-gaming | 100% | 100% | 100% | 0.2361 | 12 / 49 |
+| asus-hp-brands | 100% | 100% | 100% | 0.2743 | 10 / 35 |
+| office-laptops | 100% | 100% | 100% | — | 7 / 14 |
+| orthodontics-clinic | 77.8% (14/18) | **100% (18/18)** | 100% | 0.4140 | 18 / 18 |
 
-| Что | Статус |
-|-----|--------|
-| Подключение ключа в API | готово (`resolveSemanticLlm`, лог `llmCallLog`) |
-| Шаг `suggestNearIntentPhrases` | готово (черновой промпт в `anthropic-llm.ts`) |
-| Регрессионный QA с LLM | **не запускается** в CI — нет стабильного промпта и эталона |
-| Метрики recall 77.8% на control fixtures | относятся только к heuristic baseline |
+## Recall с реальным Claude-ответом (llm-replay, 2026-08-31)
 
-План после Prompt 12:
+Прогон: `npm run qa:semantic -- --llm` после `npm run qa:semantic:record-llm`.
+Файлы `qa/semantic/llm-replay/{orthodontics-clinic,accounting-b2b}.json` — **фактический**
+ответ `suggestNearIntentPhrases` (поля `source: claude_live`, `model`, `recordedAt`,
+`rawResponse`, `near_intent_phrases`), без подгонки под gold.
 
-1. Зафиксировать промпты в `anthropic-llm.ts` (или вынести в `prompts/semantic/`).
-2. Добавить режим `npm run qa:semantic -- --llm` (mock fetch / recorded fixtures) для
-   сравнения recall heuristic vs anthropic на тех же JSON-эталонах.
-3. Обновить таблицу baseline в этом документе отдельной строкой «с LLM».
+| Фикстура | Recall (heuristic) | Recall (Claude replay) | Precision | Пропущено near-intent (из 4) | Эталон / агент |
+|----------|-------------------|------------------------|-----------|------------------------------|----------------|
+| accounting-b2b | 77.8% | _запустите record-llm_ | _TBD_ | _TBD_ | _TBD_ |
+| orthodontics-clinic | 77.8% | _запустите record-llm_ | _TBD_ | _TBD_ | _TBD_ |
+
+Остальные фикстуры в `llm-replay/` — пустой near-intent: recall 100% (как heuristic).
+
+**Интерпретация:** разрыв между ideal replay (100%) и Claude replay показывает,
+насколько черновой промпт совпадает с человеческими near-intent формулировками.
+Recall &lt; 100% — **ожидаемый baseline**, не повод подгонять промпт под два кейса.
+
+Запись: `apps/api/src/semantic/qa-record-llm.cli.ts` (Haiku по умолчанию).
+Живой API не в CI; timeout — `AbortSignal.timeout(8000)` в `anthropic-client.ts`.
+
+Для сравнения heuristic baseline см. раздел «Baseline 2026-08-28».
+
+## Безопасность: бриф в LLM-промптах (MVP, осознанный риск)
+
+Поля брифа (`usp`, `target_audience`, `forbidden_phrases`, `website_url`, geo,
+`global_negative_keywords` и т.д.) сериализуются в user-промпт **без
+санитизации и без redaction** — см. `AnthropicSemanticLlm`, `AnthropicCopywriter`,
+`AnthropicOptimizationLlm`. Платформа не пытается отфильтровать prompt injection
+в тексте, который клиент сам ввёл в бриф.
+
+**Единственная барьерная защита перед публикацией:** человек просматривает
+семантику, объявления и кампанию в UI и явно подтверждает публикацию
+(автопилот оптимизации — отдельный opt-in на проект).
+
+**Post-LLM фильтрация (минимальная, не security boundary):**
+
+- semantic near-intent: `trim` → `lowercase` → `len >= 3` → dedup →
+  `filterKeywordsStep` (минус-слова брифа);
+- copywriting: `sanitizeClusterCreatives` (forbidden, лимиты длины);
+- optimization: `assertRationaleKeepsFigures` (числа из фактов не теряются).
+
+Это **принятый риск MVP**, а не забытая дыра: полноценная sanitization
+промптов и sandbox LLM — вне текущего этапа роадмапа.
 
 ## Подключение LLM по агентам (аудит API, 2026-08-31)
 

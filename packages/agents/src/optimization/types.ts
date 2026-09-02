@@ -34,6 +34,15 @@ export type OptimizationEvidence = {
   new_budget?: number;
   wasted_clicks?: number;
   wasted_spend?: number;
+  ad_group_name?: string;
+  ad_group_external_id?: string;
+  ctr_prior?: number;
+  ctr_current?: number;
+  ctr_delta_pct?: number;
+  period_from?: string;
+  period_to?: string;
+  prior_period_from?: string;
+  prior_period_to?: string;
 };
 
 export type OptimizationAction = {
@@ -58,9 +67,20 @@ export type OptimizationPlan = {
 
 export type OptimizationInput = {
   period: { from: string; to: string };
+  priorPeriod?: { from: string; to: string };
   targetCpl: number;
   campaigns: CampaignPerfInput[];
   searchTerms: SearchTermInput[];
+  adGroups?: AdGroupPerfInput[];
+};
+
+export type AdGroupPerfInput = {
+  campaignId: string;
+  externalCampaignId: string;
+  adGroupExternalId: string;
+  adGroupName: string;
+  current: MetricsSummary;
+  prior: MetricsSummary;
 };
 
 export type OptimizationWriter = {
@@ -84,4 +104,6 @@ export const OPTIMIZATION_THRESHOLDS = {
   cplOverTarget: 1.5,
   budgetCutRatio: 0.8,
   wastedMinClicks: 3,
+  ctrDropMinImpressions: 100,
+  ctrDropRelative: 0.2,
 };

@@ -15,13 +15,15 @@ import {
   AnalyticsCampaignSlice,
   buildAnalyticsView,
   buildPerformanceReport,
-  CampaignDraftStructure,
   ChartPoint,
   defaultReportPeriod,
   HeuristicReportingLlm,
+  normalizeCampaignDraft,
   PacingForecast,
   PerformanceReport,
   resolveLlmCostUsd,
+  Spend7dSummary,
+  sumCampaignSpend,
   summarizeLlmUsage,
 } from '@context-buyer/agents';
 import { PrismaService } from '../prisma/prisma.service';
@@ -76,7 +78,9 @@ export class ReportsService implements OnModuleInit {
       },
     });
     if (campaigns.length === 0) {
-      throw new BadRequestException('Publish a campaign first');
+      throw new BadRequestException(
+        'Сначала опубликуйте кампанию на вкладке «Кампания»',
+      );
     }
     const snapshots = await this.collectProject(projectId, campaigns);
     const result = await this.getReport(organizationId, projectId);
@@ -123,17 +127,22 @@ export class ReportsService implements OnModuleInit {
     campaigns: AnalyticsCampaignSlice[];
     adGroups: AnalyticsAdGroupSlice[];
     pacing: PacingForecast;
+    spend7d: Spend7dSummary;
     llmUsage: ReturnType<typeof summarizeLlmUsage>;
   }> {
     await this.requireProject(organizationId, projectId);
     const period = parsePeriod(from, to);
+    const period7d = defaultReportPeriod(7);
+    const snapshotFrom =
+      period.from < period7d.from ? period.from : period7d.from;
+    const snapshotTo = period.to > period7d.to ? period.to : period7d.to;
     const [rows, liveCampaigns, brief] = await Promise.all([
       this.prisma.performanceSnapshot.findMany({
         where: {
           projectId,
           date: {
-            gte: new Date(`${period.from}T00:00:00.000Z`),
-            lte: new Date(`${period.to}T00:00:00.000Z`),
+            gte: new Date(`${snapshotFrom}T00:00:00.000Z`),
+            lte: new Date(`${snapshotTo}T00:00:00.000Z`),
           },
         },
         orderBy: { date: 'asc' },
@@ -154,14 +163,24 @@ export class ReportsService implements OnModuleInit {
     const targetCpl = payload?.project.target_cpl ?? 0;
     const dailyBudget = payload?.project.budget?.daily ?? null;
     const currency = payload?.project.budget?.currency ?? '';
-    const campaignMeta = liveCampaigns.map((campaign) => ({
-      id: campaign.id,
-      name:
-        nameFromDraft(campaign.draft?.structureJson) ??
-        `Кампания ${campaign.externalCampaignId}`,
-      externalCampaignId: campaign.externalCampaignId,
-      status: campaign.status,
-    }));
+    const campaignMeta = liveCampaigns.map((campaign) => {
+      const targeting = (campaign.targetingJson ?? {}) as {
+        campaignName?: string;
+        draftUnitIndex?: number;
+      };
+      return {
+        id: campaign.id,
+        name:
+          targeting.campaignName ??
+          nameFromDraft(
+            campaign.draft?.structureJson,
+            targeting.draftUnitIndex ?? 0,
+          ) ??
+          `Кампания ${campaign.externalCampaignId}`,
+        externalCampaignId: campaign.externalCampaignId,
+        status: campaign.status,
+      };
+    });
     const analytics = buildAnalyticsView({
       snapshots: rows.map((row) => ({
         date: row.date.toISOString().slice(0, 10),
@@ -178,6 +197,27 @@ export class ReportsService implements OnModuleInit {
       dailyBudget: dailyBudget != null && dailyBudget > 0 ? dailyBudget : null,
       currency,
     });
+    const analytics7d = buildAnalyticsView({
+      snapshots: rows.map((row) => ({
+        date: row.date.toISOString().slice(0, 10),
+        campaignId: row.campaignId,
+        adGroupExternalId: row.adGroupExternalId,
+        adGroupName: row.adGroupName ?? undefined,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        spend: Number(row.spend),
+        conversions: row.conversions,
+      })),
+      campaigns: campaignMeta,
+      period: period7d,
+      dailyBudget: null,
+      currency,
+    });
+    const spend7d: Spend7dSummary = {
+      amount: sumCampaignSpend(analytics7d.campaigns),
+      currency,
+      period: period7d,
+    };
     const report = buildPerformanceReport(
       analytics.series,
       targetCpl,
@@ -207,6 +247,7 @@ export class ReportsService implements OnModuleInit {
       campaigns: analytics.campaigns,
       adGroups: analytics.adGroups,
       pacing: analytics.pacing,
+      spend7d,
       llmUsage,
     };
   }
@@ -321,8 +362,12 @@ function parsePeriod(
   return defaultReportPeriod(days);
 }
 
-function nameFromDraft(structureJson: unknown): string | null {
-  const structure = structureJson as CampaignDraftStructure | null;
-  const name = structure?.campaign?.name?.trim();
-  return name || null;
+function nameFromDraft(structureJson: unknown, unitIndex = 0): string | null {
+  try {
+    const structure = normalizeCampaignDraft(structureJson);
+    const unit = structure.campaigns[unitIndex] ?? structure.campaigns[0];
+    return unit?.campaign?.name?.trim() || null;
+  } catch {
+    return null;
+  }
 }

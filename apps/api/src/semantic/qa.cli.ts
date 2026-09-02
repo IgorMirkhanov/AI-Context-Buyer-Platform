@@ -2,13 +2,19 @@ import { readdirSync, readFileSync } from "fs";
 import path from "path";
 import { MockKeywordIdeasProvider } from "@context-buyer/connectors";
 import {
+  AnthropicSemanticLlm,
   compareSemanticQa,
+  compareCommercialGoldRecall,
   cosine,
   HashNgramEmbeddings,
   runSemanticPipeline,
   scoreClusterSeparation,
   type SemanticQaFixture,
 } from "@context-buyer/agents";
+import {
+  createSemanticQaReplayFetch,
+  loadSemanticLlmReplay,
+} from "./qa-llm-replay";
 
 function repoRoot(): string {
   return path.resolve(__dirname, "../../../..");
@@ -38,15 +44,35 @@ function line(title: string) {
   return `\n${title}\n${"─".repeat(Math.min(title.length, 60))}`;
 }
 
-async function runFixture(fixture: SemanticQaFixture) {
+async function runFixture(
+  fixture: SemanticQaFixture,
+  options: { useLlm: boolean; replayDir: string },
+) {
   const ideas = new MockKeywordIdeasProvider();
-  const core = await runSemanticPipeline(fixture.brief, {
+  const llm = options.useLlm
+    ? new AnthropicSemanticLlm({
+        apiKey: "qa-replay-key",
+        fetchImpl: createSemanticQaReplayFetch(
+          loadSemanticLlmReplay(options.replayDir, fixture.id),
+        ),
+      })
+    : undefined;
+  const { core } = await runSemanticPipeline(fixture.brief, {
+    llm,
     getKeywordIdeas: (seeds, geo) => ideas.getKeywordIdeas(seeds, geo),
   });
   const phrases = core.clusters.flatMap((cluster) =>
     cluster.keywords.map((item) => item.phrase),
   );
   const coverage = compareSemanticQa(fixture, {
+    phrases,
+    clusters: core.clusters.map((cluster) => ({
+      name: cluster.cluster_name,
+      phrases: cluster.keywords.map((item) => item.phrase),
+    })),
+    global_negatives: core.global_negatives,
+  });
+  const commercial = compareCommercialGoldRecall(fixture, {
     phrases,
     clusters: core.clusters.map((cluster) => ({
       name: cluster.cluster_name,
@@ -67,14 +93,14 @@ async function runFixture(fixture: SemanticQaFixture) {
     if (!va || !vb) return 0;
     return cosine(va, vb);
   });
-  return { core, coverage, clustering, phrases };
+  return { core, coverage, commercial, clustering, phrases };
 }
 
 function printFixture(
   fixture: SemanticQaFixture,
   result: Awaited<ReturnType<typeof runFixture>>,
 ) {
-  const { coverage, clustering, phrases, core } = result;
+  const { coverage, commercial, clustering, phrases, core } = result;
   const chunks: string[] = [];
   chunks.push(line(`${fixture.title}  [${fixture.id}]`));
   chunks.push(fixture.provenance);
@@ -87,6 +113,9 @@ function printFixture(
   chunks.push("");
   chunks.push(
     `Покрытие (recall):  ${coverage.found.length}/${coverage.goldCount} = ${pct(coverage.recall)}`,
+  );
+  chunks.push(
+    `Коммерческий recall: ${commercial.commercialFound.length}/${commercial.commercialGoldCount} = ${pct(commercial.commercialRecall)}`,
   );
   chunks.push(
     "  доля эталонных ключей, которые агент реально выдал (после нормализации регистра/пробелов).",
@@ -166,7 +195,19 @@ function printFixture(
 
 async function main() {
   const json = process.argv.includes("--json");
+  const useLlmIdeal = process.argv.includes("--llm-ideal");
+  const useLlm = process.argv.includes("--llm") || useLlmIdeal;
   const fixturesDir = path.join(repoRoot(), "qa/semantic/fixtures");
+  const replayDir = path.join(
+    repoRoot(),
+    "qa/semantic",
+    useLlmIdeal ? "llm-replay-ideal" : "llm-replay",
+  );
+  const llmMode = useLlmIdeal
+    ? "pipeline_ideal_replay"
+    : useLlm
+      ? "claude_replay"
+      : "heuristic";
   const fixtures = loadFixtures(fixturesDir);
   if (fixtures.length === 0) {
     console.error(`Нет фикстур в ${fixturesDir}`);
@@ -176,16 +217,33 @@ async function main() {
   const rows = [];
   if (!json) {
     console.log("Semantic Agent — регрессионный QA (диагностика, не pass/fail)");
-    console.log(
-      "Эталоны: qa/semantic/fixtures. Сравнение с текущим HeuristicSemanticLlm + MockKeywordIdeasProvider.",
-    );
+    if (useLlm) {
+      console.log(
+        useLlmIdeal
+          ? "Режим: pipeline replay с идеальным near-intent (qa/semantic/llm-replay-ideal/*.json) — регрессия плёнки данных."
+          : "Режим: recorded Claude near-intent (qa/semantic/llm-replay/*.json) + MockKeywordIdeasProvider.",
+      );
+    } else {
+      console.log(
+        "Режим: HeuristicSemanticLlm + MockKeywordIdeasProvider.",
+      );
+      console.log(
+        "  --llm-ideal  pipeline recall при идеальном LLM-ответе",
+      );
+      console.log(
+        "  --llm        recall с записанным ответом Claude (llm-replay/)",
+      );
+    }
   }
   for (const fixture of fixtures) {
-    const result = await runFixture(fixture);
+    const result = await runFixture(fixture, { useLlm, replayDir });
     rows.push({
       id: fixture.id,
       title: fixture.title,
+      mode: llmMode,
       recall: result.coverage.recall,
+      commercialRecall: result.commercial.commercialRecall,
+      commercialGoldCount: result.commercial.commercialGoldCount,
       precision: result.coverage.precision,
       junkRate: result.coverage.junkRate,
       clusterSeparation: result.clustering.clusterSeparation,
@@ -204,6 +262,7 @@ async function main() {
     return;
   }
   console.log(line("Сводка"));
+  console.log(`mode: ${llmMode}`);
   console.log(
     "id                  recall   precision  разделение кластеров  эталон/агент",
   );

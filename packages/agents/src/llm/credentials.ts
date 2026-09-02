@@ -1,7 +1,7 @@
 export const AI_PROVIDER_REQUIRED_MESSAGE =
   "Подключите ИИ-провайдера в Настройках";
 
-export type AiProviderName = "anthropic" | "openai";
+export type AiProviderName = "anthropic" | "openai" | "groq" | "gemini";
 
 export type AiCredentialSource = "database" | "env";
 
@@ -16,6 +16,8 @@ export type ResolvedAiKey = {
 const ENV_KEY: Record<AiProviderName, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   openai: "OPENAI_API_KEY",
+  groq: "GROQ_API_KEY",
+  gemini: "GEMINI_API_KEY",
 };
 
 export function envKeyName(provider: AiProviderName): string {

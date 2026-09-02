@@ -1,6 +1,7 @@
 import {
   deriveMasksFromUsp,
   filterKeywordIdeas,
+  isCommercialKeyword,
   masksFromBrief,
   phraseClusteringCore,
   phraseMatchesNegatives,
@@ -38,6 +39,44 @@ describe('masksFromBrief', () => {
 
   it('does not derive tail mask from non-adjective USP', () => {
     expect(deriveMasksFromUsp('гарантия 3 года')).not.toContain('3 года');
+  });
+
+  it('adds combined geo+price masks as single phrases', () => {
+    const clinicBrief: SemanticBriefInput = {
+      website_url: 'https://clinic.example',
+      geo: ['RU-SPB'],
+      usp: ['установка брекетов под ключ'],
+      target_audience: [{ segment: 'взрослые' }],
+      global_negative_keywords: [],
+    };
+    const masks = masksFromBrief(clinicBrief, '');
+    expect(masks).toEqual(
+      expect.arrayContaining([
+        'установка брекетов под ключ санкт-петербург цена',
+        'установка брекетов под ключ санкт-петербург стоимость',
+        'купить установка брекетов под ключ санкт-петербург',
+      ]),
+    );
+  });
+});
+
+describe('isCommercialKeyword', () => {
+  it('marks hot and price triggers as commercial', () => {
+    expect(isCommercialKeyword('установка брекетов под ключ', 'hot')).toBe(true);
+    expect(isCommercialKeyword('брекеты цена', 'warm')).toBe(true);
+    expect(isCommercialKeyword('записаться на брекеты', 'hot')).toBe(true);
+  });
+
+  it('excludes navigational and review phrases', () => {
+    expect(
+      isCommercialKeyword('установка брекетов обзор', 'warm'),
+    ).toBe(false);
+    expect(
+      isCommercialKeyword('клиника отзывы', 'warm'),
+    ).toBe(false);
+    expect(
+      isCommercialKeyword('клиника официальный сайт', 'navigational'),
+    ).toBe(false);
   });
 });
 

@@ -1,5 +1,7 @@
 import {
   AnthropicCopywriter,
+  GeminiCopywriter,
+  GroqCopywriter,
   HeuristicCopywriter,
   resolveCopywritingLlm,
   COPYWRITING_HEURISTIC_FALLBACK_MESSAGE,
@@ -29,10 +31,34 @@ const cluster: SemanticCluster = {
 };
 
 describe('resolveCopywritingLlm', () => {
-  it('uses AnthropicCopywriter when apiKey is present', () => {
-    const { writer, mode } = resolveCopywritingLlm({ apiKey: 'sk-ant-test' });
+  it('uses AnthropicCopywriter when provider is anthropic', () => {
+    const { writer, mode } = resolveCopywritingLlm({
+      apiKey: 'sk-ant-test',
+      provider: 'anthropic',
+    });
     expect(mode).toBe('anthropic');
     expect(writer).toBeInstanceOf(AnthropicCopywriter);
+  });
+
+  it('uses GroqCopywriter when provider is groq', () => {
+    const { writer, mode } = resolveCopywritingLlm({
+      apiKey: 'gsk-test',
+      provider: 'groq',
+    });
+    expect(mode).toBe('groq');
+    expect(writer).toBeInstanceOf(GroqCopywriter);
+    expect(writer).not.toBeInstanceOf(AnthropicCopywriter);
+  });
+
+  it('uses GeminiCopywriter when provider is gemini', () => {
+    const { writer, mode } = resolveCopywritingLlm({
+      apiKey: 'gemini-test',
+      provider: 'gemini',
+    });
+    expect(mode).toBe('gemini');
+    expect(writer).toBeInstanceOf(GeminiCopywriter);
+    expect(writer).not.toBeInstanceOf(AnthropicCopywriter);
+    expect(writer).not.toBeInstanceOf(GroqCopywriter);
   });
 
   it('falls back to heuristic and calls onFallback without apiKey', () => {

@@ -59,6 +59,14 @@ export class CreativesService {
     if (clusters.length === 0) {
       throw new BadRequestException('Run Semantic Agent first');
     }
+    const campaignPlan = await this.prisma.projectCampaignPlan.findUnique({
+      where: { projectId },
+    });
+    if (!campaignPlan?.approved) {
+      throw new BadRequestException(
+        'Сначала утвердите план кампаний на вкладке «План»',
+      );
+    }
     if (dbLimits.length === 0) {
       throw new BadRequestException('Platform limits are not configured');
     }
@@ -79,6 +87,7 @@ export class CreativesService {
       const core = this.toCore(clusters);
       const { writer, mode } = resolveCopywritingLlm({
         apiKey: credentials?.apiKey ?? null,
+        provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
         onLlmCall: async (usage) => {
           await this.prisma.llmCallLog.create({
@@ -402,6 +411,8 @@ function parseCopywritingLlmMode(
 ): CopywritingLlmMode | null {
   if (!outputRef) return null;
   if (outputRef.endsWith(':anthropic')) return 'anthropic';
+  if (outputRef.endsWith(':groq')) return 'groq';
+  if (outputRef.endsWith(':gemini')) return 'gemini';
   if (outputRef.endsWith(':heuristic') || outputRef === 'ad_creatives') {
     return 'heuristic';
   }

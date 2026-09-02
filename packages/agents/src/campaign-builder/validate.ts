@@ -1,6 +1,7 @@
 import Ajv from "ajv";
 import { CAMPAIGN_DRAFT_JSON_SCHEMA } from "./schema";
 import { CampaignDraftStructure } from "./types";
+import { normalizeCampaignDraft } from "./normalize";
 
 const ajv = new Ajv({ allErrors: true });
 const validateFn = ajv.compile(CAMPAIGN_DRAFT_JSON_SCHEMA);
@@ -15,7 +16,8 @@ export class CampaignDraftValidationError extends Error {
 export function validateCampaignDraft(
   payload: unknown,
 ): asserts payload is CampaignDraftStructure {
-  if (validateFn(payload)) {
+  const normalized = normalizeCampaignDraft(payload);
+  if (validateFn(normalized)) {
     return;
   }
   throw new CampaignDraftValidationError([

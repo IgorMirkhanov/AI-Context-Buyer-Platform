@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, clearToken, getToken } from "@/lib/api";
 import { DEFAULT_BRANDING, OrgBranding } from "@/lib/branding";
@@ -48,6 +48,7 @@ export default function ProjectsPage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [accentColor, setAccentColor] = useState("#18181b");
   const [hideBadge, setHideBadge] = useState(false);
+  const creatingRef = useRef(false);
 
   async function load() {
     const [user, list] = await Promise.all([
@@ -83,6 +84,8 @@ export default function ProjectsPage() {
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setError(null);
     try {
       const created = await api<{ id: string }>("/projects", {
@@ -101,6 +104,7 @@ export default function ProjectsPage() {
       });
       router.push(`/projects/${created.id}`);
     } catch (err) {
+      creatingRef.current = false;
       setError(err instanceof Error ? err.message : "Не удалось создать проект");
     }
   }

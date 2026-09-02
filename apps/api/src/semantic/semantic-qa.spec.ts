@@ -1,5 +1,6 @@
 import {
   compareSemanticQa,
+  compareCommercialGoldRecall,
   matchesIrrelevant,
   normalizePhrase,
   scoreClusterSeparation,
@@ -141,5 +142,30 @@ describe('semantic QA comparison', () => {
     expect(scored.intraMean).toBeNull();
     expect(scored.interMean).toBeNull();
     expect(scored.clusterSeparation).toBeNull();
+  });
+
+  it('computes commercial gold recall separately from full recall', () => {
+    const commercial = compareCommercialGoldRecall(fixture, {
+      phrases: ['Купить Asus', 'asus ремонт'],
+      clusters: [],
+      global_negatives: [],
+    });
+    expect(commercial.commercialGoldCount).toBe(1);
+    expect(commercial.commercialFound).toEqual(['купить asus']);
+    expect(commercial.commercialRecall).toBe(1);
+    expect(commercial.commercialMissing).toEqual([]);
+  });
+
+  it('does not count navigational or review gold as commercial', () => {
+    const commercial = compareCommercialGoldRecall(fixture, {
+      phrases: [],
+      clusters: [],
+      global_negatives: [],
+    });
+    expect(commercial.commercialGoldCount).toBe(1);
+    expect(commercial.commercialMissing.map((item) => item.phrase)).toEqual([
+      'купить asus',
+    ]);
+    expect(commercial.commercialRecall).toBe(0);
   });
 });

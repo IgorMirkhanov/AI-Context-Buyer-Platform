@@ -9,11 +9,17 @@ import { AiProviderNeeded } from "@/components/ai-provider-needed";
 import { AppShell } from "@/shell/app-shell";
 import { parseProjectTab } from "@/shell/project-tabs";
 import { Alert } from "@/ui/alert";
-import { Badge, IssueBadge, StatusBadge } from "@/ui/badge";
+import { Badge, StatusBadge } from "@/ui/badge";
 import { btnClass, Button } from "@/ui/button";
 import { Card, CardHint, CardTitle } from "@/ui/card";
 import { EmptyState, ErrorState, PageSkeleton, Skeleton } from "@/ui/states";
 import { AnalyticsPanel, type AttributionResult, type ReportResult } from "@/components/analytics-panel";
+import { CreativesPanel } from "@/components/creatives-panel";
+import { BriefEditor } from "@/components/brief-editor";
+import { PipelineProgress } from "@/components/pipeline-progress";
+import { NegativeSuggestionsPanel } from "@/components/negative-suggestions-panel";
+import { PlanReviewPanel } from "@/components/plan-review-panel";
+import { isKeywordCommercial } from "@/lib/semantic-keywords";
 import { TermHint, BeginnerNote } from "@/ui/term-hint";
 
 type Brief = {
@@ -30,8 +36,24 @@ type Brief = {
   exclusions: { global_negative_keywords: string[] };
 };
 
+type AnalysisResult = {
+  task: { status: string; error: string | null } | null;
+  ready: boolean;
+  explanation: string | null;
+  landingText: string | null;
+  websiteUrl: string | null;
+  customSeeds: string[];
+  llmMode: string | null;
+};
+
 type SemanticResult = {
   task: { status: string; error: string | null } | null;
+  negativeSuggestions: Array<{
+    id: string;
+    phrase: string;
+    reason: string;
+    status: "pending" | "accepted" | "rejected";
+  }>;
   clusters: Array<{
     id: string;
     name: string;
@@ -41,6 +63,7 @@ type SemanticResult = {
       intent: string;
       frequency: number;
       source: string;
+      isCommercial?: boolean;
     }>;
     negativeKeywords: string[];
   }>;
@@ -84,28 +107,61 @@ const INTENT_WHY: Record<string, string> = {
   navigational: "навигационный интент — бренд или сайт",
 };
 
+const KEYWORD_SOURCE_LABEL: Record<string, string> = {
+  mock_wordstat: "Wordstat",
+  wordstat: "Wordstat",
+  google_keyword_planner: "Google KP",
+  llm_near_intent: "предложено ИИ",
+  llm_seed_expand: "предложено ИИ",
+};
+
+function keywordSourceLabel(source: string): string {
+  return KEYWORD_SOURCE_LABEL[source] ?? source;
+}
+
+function isAiSuggestedKeyword(source: string): boolean {
+  return source === "llm_near_intent" || source === "llm_seed_expand";
+}
+
 function keywordWhy(kw: { intent: string; source: string }): string {
   const intent = INTENT_WHY[kw.intent] ?? `интент: ${kw.intent}`;
-  const source = kw.source ? `источник: ${kw.source}` : "источник не указан";
-  return `${intent}; ${source}`;
+  return intent;
 }
-
-function formatShare(value: number | null): string {
-  if (value === null) return "—";
-  return `${Math.round(value * 100)}%`;
-}
-
-const TYPE_LABEL: Record<string, string> = {
-  headline1: "Заголовок 1",
-  headline2: "Заголовок 2",
-  description: "Описание",
-  sitelink: "Быстрая ссылка",
-  callout: "Уточнение",
-};
 
 function platformTitle(platform: string): string {
   return platform === "google_ads" ? "Google Ads" : "Яндекс Директ";
 }
+
+function localizeApiError(message: string): string {
+  if (
+    message === "Publish a campaign first" ||
+    message.includes("опубликуйте кампанию")
+  ) {
+    return "Сначала опубликуйте кампанию на вкладке «Кампания». Кабинет уже подключён — статистика появится после запуска.";
+  }
+  if (message === "Collect performance snapshots first") {
+    return "Сначала обновите статистику на вкладке «Аналитика» — нужны снимки из рекламного кабинета.";
+  }
+  return message;
+}
+
+type CampaignPlanResult = {
+  task: { status: string; error: string | null } | null;
+  ready: boolean;
+  approved: boolean;
+  campaignCount: number;
+  llmMode: string | null;
+  plan: {
+    campaigns: Array<{
+      name: string;
+      rationale: string;
+      ad_groups: Array<{
+        name: string;
+        cluster_names: string[];
+      }>;
+    }>;
+  } | null;
+};
 
 type CampaignsResult = {
   task: { status: string; error: string | null } | null;
@@ -113,27 +169,29 @@ type CampaignsResult = {
     id: string;
     status: string;
     structureJson: {
-      campaign: {
-        name: string;
-        budget_daily: number;
-        currency: string;
-        geo: string[];
-        href: string;
-        initial_status: string;
-      };
-      ad_groups: Array<{
-        name: string;
-        keywords: string[];
-        negative_keywords: string[];
-        ads: Array<{
-          ab_group: string;
-          headline1: string;
-          headline2: string;
-          description: string;
+      campaigns: Array<{
+        campaign: {
+          name: string;
+          budget_daily: number;
+          currency: string;
+          geo: string[];
+          href: string;
+          initial_status: string;
+        };
+        ad_groups: Array<{
+          name: string;
+          keywords: string[];
+          negative_keywords: string[];
+          ads: Array<{
+            ab_group: string;
+            headline1: string;
+            headline2: string;
+            description: string;
+          }>;
         }>;
+        publish?: { step?: string; error?: string; externalCampaignId?: string };
       }>;
       global_negatives: string[];
-      publish?: { step?: string; error?: string; externalCampaignId?: string };
     };
   } | null;
   campaigns: Array<{
@@ -270,7 +328,9 @@ type LlmUsageResult = {
 };
 
 const LLM_AGENT: Record<string, string> = {
+  analysis: "Анализ",
   semantic: "Семантика",
+  campaign_plan: "План кампаний",
   copywriting: "Объявления",
   validation: "Валидация",
   campaign_builder: "Черновик",
@@ -285,6 +345,8 @@ type PipelineResult = {
   nextStep: string | null;
   blockedReason: string | null;
   autoRunnable: boolean;
+  fullRunAvailable: boolean;
+  canCancel?: boolean;
   queue?: {
     mode: string;
     jobId: string;
@@ -293,21 +355,16 @@ type PipelineResult = {
   };
   facts: {
     hasBrief: boolean;
+    hasAnalysis: boolean;
     hasSemantic: boolean;
+    hasPlan: boolean;
+    planApproved: boolean;
     hasCreatives: boolean;
     criticalIssues: number;
     hasDraft: boolean;
     hasLiveCampaign: boolean;
   };
 };
-
-const PIPELINE_TRACK: Array<{ id: string; label: string }> = [
-  { id: "brief_submitted", label: "Бриф" },
-  { id: "semantic_ready", label: "Семантика" },
-  { id: "copy_ready", label: "Объявления" },
-  { id: "awaiting_approval", label: "Черновик" },
-  { id: "launched", label: "Запуск" },
-];
 
 type Me = {
   email: string;
@@ -338,7 +395,10 @@ function ProjectPageInner() {
   const search = useSearchParams();
   const tab = parseProjectTab(search.get("tab"));
   const [project, setProject] = useState<ProjectDetails | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [semantic, setSemantic] = useState<SemanticResult | null>(null);
+  const [semanticCommercialOnly, setSemanticCommercialOnly] = useState(true);
+  const [campaignPlan, setCampaignPlan] = useState<CampaignPlanResult | null>(null);
   const [creatives, setCreatives] = useState<CreativesResult | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignsResult | null>(null);
   const [report, setReport] = useState<ReportResult | null>(null);
@@ -372,15 +432,21 @@ function ProjectPageInner() {
   const [autopilotConfirm, setAutopilotConfirm] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [customSeedsText, setCustomSeedsText] = useState("");
   const [oauthFlag, setOauthFlag] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [data, sem, ads, camp, rep, opt, attr, vis, pipe, notes, journal, llm, user, grants, ai] =
+    const [data, analysisData, sem, planData, ads, camp, rep, opt, attr, vis, pipe, notes, journal, llm, user, grants, ai] =
       await Promise.all([
       api<ProjectDetails>(`/projects/${params.id}`),
+      api<AnalysisResult>(`/projects/${params.id}/analysis`).catch(() => null),
       api<SemanticResult>(`/projects/${params.id}/semantic`).catch(() => null),
+      api<CampaignPlanResult>(`/projects/${params.id}/campaign-plan`).catch(
+        () => null,
+      ),
       api<CreativesResult>(`/projects/${params.id}/creatives`).catch(
         () => null,
       ),
@@ -408,7 +474,16 @@ function ProjectPageInner() {
       })),
     ]);
     setProject(data);
-    setSemantic(sem);
+    setAnalysis(analysisData);
+    setSemantic(
+      sem
+        ? {
+            ...sem,
+            negativeSuggestions: sem.negativeSuggestions ?? [],
+          }
+        : sem,
+    );
+    setCampaignPlan(planData);
     setCreatives(ads);
     setCampaigns(camp);
     setReport(rep);
@@ -428,9 +503,10 @@ function ProjectPageInner() {
       nextDrafts[row.id] = row.text;
     }
     setDrafts(nextDrafts);
-    if (camp?.draft) {
-      setDraftName(camp.draft.structureJson.campaign.name);
-      setDraftBudget(String(camp.draft.structureJson.campaign.budget_daily));
+    if (camp?.draft?.structureJson.campaigns?.[0]) {
+      const primary = camp.draft.structureJson.campaigns[0];
+      setDraftName(primary.campaign.name);
+      setDraftBudget(String(primary.campaign.budget_daily));
     }
   }, [params.id]);
 
@@ -459,6 +535,12 @@ function ProjectPageInner() {
     }, 2000);
     return () => window.clearInterval(timer);
   }, [pipeline?.queue?.status, load]);
+
+  useEffect(() => {
+    if (analysis?.customSeeds?.length) {
+      setCustomSeedsText(analysis.customSeeds.join("\n"));
+    }
+  }, [analysis?.customSeeds]);
 
   async function connectPlatform() {
     setError(null);
@@ -515,6 +597,58 @@ function ProjectPageInner() {
     }
   }
 
+  async function cancelPipeline() {
+    setError(null);
+    setPending(true);
+    try {
+      const data = await api<PipelineResult>(
+        `/projects/${params.id}/pipeline/cancel`,
+        { method: "POST" },
+      );
+      setPipeline(data);
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось отменить пайплайн",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function runAnalysis() {
+    setError(null);
+    setPending(true);
+    try {
+      await api(`/projects/${params.id}/analysis/run`, { method: "POST" });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось выполнить анализ",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveCustomSeeds() {
+    setError(null);
+    setPending(true);
+    try {
+      await api(`/projects/${params.id}/analysis/seeds`, {
+        method: "PATCH",
+        body: JSON.stringify({ customSeedsText }),
+      });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось сохранить слова",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function runSemantic() {
     setError(null);
     setPending(true);
@@ -525,6 +659,94 @@ function ProjectPageInner() {
       setError(
         err instanceof Error ? err.message : "Не удалось собрать семантику",
       );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function resolveNegativeSuggestion(
+    suggestionId: string,
+    action: "accept" | "reject",
+  ) {
+    setError(null);
+    setPending(true);
+    try {
+      await api(
+        `/projects/${params.id}/semantic/negative-suggestions/${suggestionId}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        },
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось обработать минус-слово",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function runCampaignPlan() {
+    setError(null);
+    setPending(true);
+    try {
+      await api(`/projects/${params.id}/campaign-plan/run`, { method: "POST" });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось сформировать план",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function approvePlanAndBuild() {
+    setError(null);
+    setPending(true);
+    try {
+      await api(`/projects/${params.id}/campaign-plan/approve`, {
+        method: "POST",
+      });
+      await api(`/projects/${params.id}/creatives/run`, { method: "POST" });
+      await api(`/projects/${params.id}/campaigns/draft`, { method: "POST" });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось собрать кампании",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveBrief(body: {
+    websiteUrl: string;
+    geo: string[];
+    budgetDaily: number;
+    budgetCurrency?: string;
+    targetCpl?: number;
+    usp: string[];
+    targetAudience: Array<{ segment: string }>;
+    globalNegativeKeywords: string[];
+  }) {
+    setError(null);
+    setPending(true);
+    try {
+      await api(`/projects/${params.id}/brief`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось сохранить бриф",
+      );
+      throw err;
     } finally {
       setPending(false);
     }
@@ -618,14 +840,22 @@ function ProjectPageInner() {
 
   async function saveDraftMeta() {
     const current = campaigns?.draft;
-    if (!current) return;
+    if (!current?.structureJson.campaigns?.[0]) return;
     const structure = {
       ...current.structureJson,
-      campaign: {
-        ...current.structureJson.campaign,
-        name: draftName.trim() || current.structureJson.campaign.name,
-        budget_daily: Number(draftBudget) || current.structureJson.campaign.budget_daily,
-      },
+      campaigns: current.structureJson.campaigns.map((unit, index) =>
+        index === 0
+          ? {
+              ...unit,
+              campaign: {
+                ...unit.campaign,
+                name: draftName.trim() || unit.campaign.name,
+                budget_daily:
+                  Number(draftBudget) || unit.campaign.budget_daily,
+              },
+            }
+          : unit,
+      ),
     };
     setError(null);
     try {
@@ -661,7 +891,7 @@ function ProjectPageInner() {
   }
 
   async function collectReport() {
-    setError(null);
+    setReportError(null);
     setPending(true);
     try {
       const data = await api<ReportResult>(
@@ -670,9 +900,9 @@ function ProjectPageInner() {
       );
       setReport(data);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Не удалось обновить статистику",
-      );
+      const raw =
+        err instanceof Error ? err.message : "Не удалось обновить статистику";
+      setReportError(localizeApiError(raw));
     } finally {
       setPending(false);
     }
@@ -911,6 +1141,8 @@ function ProjectPageInner() {
   }
 
   const connected = project.connection.status === "connected";
+  const hasPublishedCampaigns = (campaigns?.campaigns.length ?? 0) > 0;
+  const hasCampaignDraft = Boolean(campaigns?.draft);
   const brief = project.brief;
   const readOnly = me?.canWrite === false;
   const branding = me?.branding ?? DEFAULT_BRANDING;
@@ -960,6 +1192,12 @@ function ProjectPageInner() {
         </Alert>
       ) : null}
 
+      {error ? (
+        <Alert tone="danger" className="mb-4">
+          {localizeApiError(error)}
+        </Alert>
+      ) : null}
+
       {readOnly ? (
         <Alert tone="alert" className="mb-4">
           Кабинет в режиме просмотра: запускать кампании и менять настройки
@@ -984,65 +1222,41 @@ function ProjectPageInner() {
       <Card>
         <CardTitle>Пайплайн</CardTitle>
         <CardHint>
-          Код ведёт проект по стадиям через очередь задач (по одному job на
-          project_id, с ретраями). LLM не выбирает следующий шаг. Запуск
-          кампании в кабинет оркестратор не ставит в очередь.
+          «Прогнать пайплайн до черновика» проходит все этапы автоматически до
+          готового черновика. «Отменить и доработать» сбрасывает черновик и
+          останавливает очередь — после правок на вкладках снова нажмите
+          «Прогнать».
         </CardHint>
-        <ol className="mb-3 flex flex-wrap gap-2 text-xs">
-          {PIPELINE_TRACK.map((item) => {
-            const current = pipeline?.stage ?? "idle";
-            const reached =
-              current === item.id ||
-              (item.id === "brief_submitted" &&
-                pipeline?.facts.hasBrief) ||
-              (item.id === "semantic_ready" &&
-                pipeline?.facts.hasSemantic) ||
-              (item.id === "copy_ready" && pipeline?.facts.hasCreatives) ||
-              (item.id === "awaiting_approval" && pipeline?.facts.hasDraft) ||
-              (item.id === "launched" && pipeline?.facts.hasLiveCampaign);
-            return (
-              <li key={item.id}>
-                <span
-                  className={
-                    reached
-                      ? "inline-flex rounded-full bg-[var(--accent)] px-3 py-1 text-[var(--accent-fg)]"
-                      : "inline-flex rounded-full border border-[var(--border)] px-3 py-1 text-[var(--fg-muted)]"
-                  }
-                >
-                  {item.label}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-        <p className="mb-3 text-sm text-[var(--fg-muted)]">
-          Стадия: {pipeline?.stage ?? "—"}
-          {pipeline?.queue
-            ? ` · очередь ${pipeline.queue.mode}/${pipeline.queue.status}`
-            : ""}
-          {pipeline?.queue?.failedReason
-            ? ` · ${pipeline.queue.failedReason}`
-            : ""}
-          {pipeline?.blockedReason ? ` · ${pipeline.blockedReason}` : ""}
-        </p>
-        <Button
-          onClick={runPipeline}
-          disabled={
-            pending ||
-            readOnly ||
-            !aiReady ||
-            !pipeline?.autoRunnable ||
-            pipeline?.queue?.status === "queued" ||
+        <PipelineProgress projectId={params.id} pipeline={pipeline} />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            onClick={runPipeline}
+            disabled={
+              pending ||
+              readOnly ||
+              !aiReady ||
+              !pipeline?.fullRunAvailable ||
+              pipeline?.queue?.status === "queued" ||
+              pipeline?.queue?.status === "active"
+            }
+          >
+            {pipeline?.queue?.status === "queued" ||
             pipeline?.queue?.status === "active"
-          }
-        >
-          {pipeline?.queue?.status === "queued" ||
-          pipeline?.queue?.status === "active"
-            ? "В очереди…"
-            : pending
-              ? "Идёт пайплайн…"
-              : "Прогнать пайплайн до черновика"}
-        </Button>
+              ? "В очереди…"
+              : pending
+                ? "Идёт пайплайн…"
+                : "Прогнать пайплайн до черновика"}
+          </Button>
+          {pipeline?.canCancel ? (
+            <Button
+              variant="secondary"
+              onClick={() => void cancelPipeline()}
+              disabled={pending || readOnly}
+            >
+              {pending ? "Отменяем…" : "Отменить и доработать"}
+            </Button>
+          ) : null}
+        </div>
       </Card>
 
       <Card>
@@ -1055,10 +1269,12 @@ function ProjectPageInner() {
             ? ` · до ${new Date(project.connection.expiresAt).toLocaleString("ru-RU")}`
             : ""}
         </p>
-        {error ? (
-          <Alert tone="danger" className="mt-2">
-            {error}
-          </Alert>
+        {connected && !hasPublishedCampaigns ? (
+          <p className="mt-2 text-sm text-[var(--fg-muted)]">
+            {hasCampaignDraft
+              ? "Черновик кампании готов — для статистики откройте вкладку «Кампания» и нажмите «Запустить кампанию»."
+              : "Для статистики сначала соберите и опубликуйте кампанию."}
+          </p>
         ) : null}
         <div className="mt-3 flex gap-2">
           {!connected ? (
@@ -1328,6 +1544,10 @@ function ProjectPageInner() {
         onCollectReport={collectReport}
         onConnectAttribution={connectAttribution}
         onCollectAttribution={collectAttribution}
+        cabinetConnected={connected}
+        hasPublishedCampaigns={hasPublishedCampaigns}
+        hasCampaignDraft={hasCampaignDraft}
+        reportError={reportError}
       />
       ) : null}
 
@@ -1473,6 +1693,81 @@ function ProjectPageInner() {
       </section>
       ) : null}
 
+      {tab === "analysis" ? (
+      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+        <h2 className="mb-2 font-medium">Анализ сайта и брифа</h2>
+        <p className="mb-3 text-sm text-zinc-600">
+          Перед сбором семантики агент загружает главную страницу сайта и
+          объясняет, на что опирается при подборе ключевых фраз.
+        </p>
+        <p className="mb-3 text-sm text-zinc-600">
+          {analysis?.task
+            ? `Задача: ${analysis.task.status}${analysis.task.error ? ` · ${analysis.task.error}` : ""}`
+            : analysis?.ready
+              ? `Готово${analysis.llmMode ? ` · модель ${analysis.llmMode}` : ""}`
+              : "Анализ ещё не выполнялся"}
+        </p>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            className={btnClass("primary")}
+            onClick={runAnalysis}
+            disabled={pending || readOnly || !brief || !aiReady}
+          >
+            {pending ? "Анализируем…" : analysis?.ready ? "Перезапустить анализ" : "Запустить анализ"}
+          </button>
+        </div>
+        {analysis?.ready && analysis.explanation ? (
+          <div className="mb-4 rounded border border-zinc-200 bg-zinc-50 p-4 text-sm whitespace-pre-wrap">
+            {analysis.explanation}
+          </div>
+        ) : (
+          <EmptyState title="Анализ не выполнен">
+            Заполните бриф и нажмите «Запустить анализ». После этого появится
+            объяснение и кнопка сбора семантики.
+          </EmptyState>
+        )}
+        {analysis?.ready ? (
+          <>
+            <label className="mb-1 block text-sm font-medium">
+              Добавить свои слова
+            </label>
+            <p className="mb-2 text-xs text-zinc-500">
+              По одному на строку или через запятую — попадут в seed-список
+              наравне с масками из брифа.
+            </p>
+            <textarea
+              className="mb-3 min-h-[96px] w-full rounded border border-zinc-200 p-2 text-sm"
+              value={customSeedsText}
+              onChange={(event) => setCustomSeedsText(event.target.value)}
+              disabled={pending || readOnly}
+              placeholder={"ноутбук для офиса\nзакупка техники оптом"}
+            />
+            <div className="mb-4 flex flex-wrap gap-2">
+              <button
+                className={btnClass("secondary")}
+                onClick={saveCustomSeeds}
+                disabled={pending || readOnly}
+              >
+                Сохранить слова
+              </button>
+              <button
+                className={btnClass("primary")}
+                onClick={async () => {
+                  if (customSeedsText.trim()) {
+                    await saveCustomSeeds();
+                  }
+                  await runSemantic();
+                }}
+                disabled={pending || readOnly || !aiReady}
+              >
+                {pending ? "Собираем…" : "Собрать семантику"}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </section>
+      ) : null}
+
       {tab === "semantic" ? (
       <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
         <h2 className="mb-2 font-medium">
@@ -1488,7 +1783,13 @@ function ProjectPageInner() {
           <button
             className={btnClass("primary")}
             onClick={runSemantic}
-            disabled={pending || readOnly || !brief || !aiReady}
+            disabled={
+              pending ||
+              readOnly ||
+              !brief ||
+              !aiReady ||
+              !pipeline?.facts.hasAnalysis
+            }
           >
             {pending ? "Собираем…" : "Собрать семантику"}
           </button>
@@ -1514,15 +1815,43 @@ function ProjectPageInner() {
           >
             XLSX
           </button>
+          <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
+            <input
+              type="checkbox"
+              checked={semanticCommercialOnly}
+              onChange={(event) =>
+                setSemanticCommercialOnly(event.target.checked)
+              }
+              className="rounded border-zinc-300"
+            />
+            Только коммерческие
+          </label>
         </div>
+        {semantic?.negativeSuggestions?.length ? (
+          <NegativeSuggestionsPanel
+            suggestions={semantic.negativeSuggestions}
+            readOnly={readOnly}
+            pending={pending}
+            onResolve={resolveNegativeSuggestion}
+          />
+        ) : null}
         {semantic && semantic.clusters.length > 0 ? (
           <div className="flex flex-col gap-4">
-            {semantic.clusters.map((cluster) => (
+            {semantic.clusters.map((cluster) => {
+              const visibleKeywords = semanticCommercialOnly
+                ? cluster.keywords.filter((kw) => isKeywordCommercial(kw))
+                : cluster.keywords;
+              const hiddenCount =
+                cluster.keywords.length - visibleKeywords.length;
+              return (
               <div key={cluster.id} className="overflow-x-auto">
                 <p className="mb-1 font-medium">
                   <TermHint term="cluster">{cluster.name}</TermHint>{" "}
                   <span className="text-sm font-normal text-zinc-500">
                     {cluster.category}
+                    {hiddenCount > 0 && semanticCommercialOnly
+                      ? ` · скрыто ${hiddenCount} некоммерческих`
+                      : ""}
                   </span>
                 </p>
                 <table className="ui-table">
@@ -1532,12 +1861,13 @@ function ProjectPageInner() {
                       <th className="py-1 pr-2">
                         <TermHint term="intent">Интент</TermHint>
                       </th>
+                      <th className="py-1 pr-2">Источник</th>
                       <th className="py-1 pr-2">Почему</th>
                       <th className="py-1">Частота</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cluster.keywords.map((kw) => (
+                    {visibleKeywords.map((kw) => (
                       <tr key={kw.phrase} className="border-t border-zinc-100">
                         <td className="py-1 pr-2">{kw.phrase}</td>
                         <td className="py-1 pr-2">
@@ -1555,6 +1885,15 @@ function ProjectPageInner() {
                             {kw.intent}
                           </TermHint>
                         </td>
+                        <td className="py-1 pr-2">
+                          {isAiSuggestedKeyword(kw.source) ? (
+                            <Badge kind="info">{keywordSourceLabel(kw.source)}</Badge>
+                          ) : (
+                            <span className="text-xs text-zinc-600">
+                              {keywordSourceLabel(kw.source)}
+                            </span>
+                          )}
+                        </td>
                         <td className="py-1 pr-2 text-xs text-zinc-500">
                           {keywordWhy(kw)}
                         </td>
@@ -1571,125 +1910,68 @@ function ProjectPageInner() {
                   </p>
                 ) : null}
               </div>
-            ))}
+            );
+            })}
           </div>
         ) : (
-          <EmptyState title="Заполните бриф и нажмите «Собрать семантику»">
-            Кластеры появятся после сбора ядра. Если бриф уже есть — кнопка
-            «Собрать семантику» выше или «Прогнать пайплайн до черновика» в
-            шапке проекта.
+          <EmptyState title="Сначала выполните анализ">
+            На вкладке «Анализ» запустите разбор сайта и брифа, затем соберите
+            семантику здесь или на вкладке «Анализ».
           </EmptyState>
         )}
       </section>
       ) : null}
 
+      {tab === "plan" ? (
+      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+        <h2 className="mb-2 font-medium">План запуска</h2>
+        <p className="mb-4 text-sm text-zinc-600">
+          Коммерческая семантика, минус-слова и структура кампаний — в одном
+          месте перед запуском копирайтинга.
+        </p>
+        <PlanReviewPanel
+          semantic={
+            semantic
+              ? {
+                  clusters: semantic.clusters,
+                  negativeSuggestions: semantic.negativeSuggestions ?? [],
+                }
+              : null
+          }
+          briefNegatives={brief?.exclusions.global_negative_keywords ?? []}
+          campaignPlan={campaignPlan}
+          readOnly={readOnly}
+          pending={pending}
+          aiReady={aiReady}
+          onRunPlan={runCampaignPlan}
+          onApprove={approvePlanAndBuild}
+          onResolveNegative={resolveNegativeSuggestion}
+        />
+      </section>
+      ) : null}
+
       {tab === "ads" ? (
       <>
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
-        <h2 className="mb-2 font-medium">Объявления</h2>
-        <p className="mb-3 text-sm text-zinc-600">
-          {creatives?.task
-            ? `Копирайтинг: ${creatives.task.status}${creatives.task.error ? ` · ${creatives.task.error}` : ""}`
-            : "Ещё не запускалось"}
-          {creatives?.validationTask
-            ? ` · Валидация: ${creatives.validationTask.status}`
-            : ""}
-          {creatives?.quality
-            ? ` · принято без правок: объявления ${formatShare(creatives.quality.creatives.acceptedShare)}, кластеры ${formatShare(creatives.quality.clusters.acceptedShare)}`
-            : ""}
-        </p>
-        <button
-          className={btnClass("primary", "mb-4")}
-          onClick={runCopy}
-          disabled={
-            pending || readOnly || !brief || !semantic || semantic.clusters.length === 0 || !aiReady
-          }
-        >
-          {pending ? "Пишем объявления…" : "Сгенерировать объявления"}
-        </button>
-        {creatives && creatives.issues.length > 0 ? (
-          <ul className="mb-4 flex flex-col gap-1 text-sm">
-            {creatives.issues.map((issue) => (
-              <li key={issue.id}>
-                <IssueBadge
-                  level={issue.level}
-                  autoFixed={issue.autoFixed}
-                />{" "}
-                {issue.message}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {creatives && creatives.creatives.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="ui-table">
-              <thead>
-                <tr className="text-zinc-500">
-                  <th className="py-1 pr-2">
-                    <TermHint term="cluster">Кластер</TermHint>
-                  </th>
-                  <th className="py-1 pr-2">A/B</th>
-                  <th className="py-1 pr-2">Тип</th>
-                  <th className="py-1 pr-2">Текст</th>
-                  <th className="py-1 pr-2">Почему</th>
-                  <th className="py-1">Issues</th>
-                </tr>
-              </thead>
-              <tbody>
-                {creatives.creatives.map((row) => (
-                  <tr key={row.id} className="border-t border-zinc-100 align-top">
-                    <td className="py-2 pr-2">{row.clusterName}</td>
-                    <td className="py-2 pr-2">{row.abGroup}</td>
-                    <td className="py-2 pr-2 whitespace-nowrap">
-                      {TYPE_LABEL[row.type] ?? row.type}
-                    </td>
-                    <td className="py-2 pr-2">
-                      <input
-                        className="ui-input"
-                        value={drafts[row.id] ?? row.text}
-                        onChange={(event) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [row.id]: event.target.value,
-                          }))
-                        }
-                        onBlur={() => saveCreative(row.id)}
-                      />
-                    </td>
-                    <td className="py-2 pr-2 text-xs text-zinc-500">
-                      сгенерировано по кластеру «{row.clusterName}»
-                      {row.status === "edited" ? (
-                        <Badge kind="alert">правлен вручную</Badge>
-                      ) : null}
-                    </td>
-                    <td className="py-2">
-                      {row.issues.length === 0 ? (
-                        <span className="text-zinc-400">—</span>
-                      ) : (
-                        <span className="flex flex-wrap gap-1">
-                          {row.issues.map((issue) => (
-                            <IssueBadge
-                              key={issue.id}
-                              level={issue.level}
-                              autoFixed={issue.autoFixed}
-                              title={issue.message}
-                            />
-                          ))}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState title="Сначала соберите семантику на вкладке «Семантика»">
-            Без кластеров тексты писать не из чего. Нажмите «Собрать семантику»,
-            затем вернитесь и нажмите «Сгенерировать объявления».
-          </EmptyState>
-        )}
-      </section>
+      <CreativesPanel
+        data={creatives}
+        drafts={drafts}
+        onDraftChange={(id, text) =>
+          setDrafts((prev) => ({ ...prev, [id]: text }))
+        }
+        onSave={saveCreative}
+        onGenerate={runCopy}
+        generateDisabled={
+          pending ||
+          readOnly ||
+          !brief ||
+          !semantic ||
+          semantic.clusters.length === 0 ||
+          !aiReady ||
+          !pipeline?.facts.planApproved
+        }
+        generatePending={pending}
+        generateLabel="Сгенерировать объявления"
+      />
 
       <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
         <h2 className="mb-2 font-medium">Визуальные креативы</h2>
@@ -1815,9 +2097,44 @@ function ProjectPageInner() {
           {pending ? "Собираем…" : "Собрать черновик кампании"}
         </button>
         {campaigns?.draft ? (
-          <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-4 text-sm">
+            {campaigns.draft.structureJson.campaigns.map((unit) => (
+              <div
+                key={unit.campaign.name}
+                className="rounded border border-zinc-100 p-3"
+              >
+                <p className="mb-2 font-medium">{unit.campaign.name}</p>
+                <p>
+                  Бюджет: {unit.campaign.budget_daily}{" "}
+                  {unit.campaign.currency} · гео:{" "}
+                  {unit.campaign.geo.join(", ")} · сайт: {unit.campaign.href}
+                </p>
+                {unit.ad_groups.map((group) => (
+                  <div key={group.name} className="mt-2 rounded border border-zinc-50 p-2">
+                    <p className="font-medium">{group.name}</p>
+                    <p className="text-xs text-zinc-500">
+                      Ключи: {group.keywords.slice(0, 8).join(", ")}
+                      {group.keywords.length > 8 ? "…" : ""}
+                    </p>
+                    <ul className="mt-1 list-disc pl-5">
+                      {group.ads.map((ad) => (
+                        <li key={`${group.name}-${ad.ab_group}`}>
+                          [{ad.ab_group}] {ad.headline1} / {ad.headline2} —{" "}
+                          {ad.description}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+                {unit.publish?.error ? (
+                  <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-red-800">
+                    Сбой на шаге {unit.publish.step}: {unit.publish.error}
+                  </p>
+                ) : null}
+              </div>
+            ))}
             <label className="flex flex-col gap-1">
-              Название
+              Название (первая кампания)
               <input
                 className="ui-input"
                 value={draftName}
@@ -1826,7 +2143,8 @@ function ProjectPageInner() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              Бюджет в день ({campaigns.draft.structureJson.campaign.currency})
+              Бюджет в день (
+              {campaigns.draft.structureJson.campaigns[0]?.campaign.currency})
               <input
                 className="ui-input"
                 value={draftBudget}
@@ -1834,38 +2152,6 @@ function ProjectPageInner() {
                 onBlur={saveDraftMeta}
               />
             </label>
-            <p>
-              Гео: {campaigns.draft.structureJson.campaign.geo.join(", ")} ·
-              сайт: {campaigns.draft.structureJson.campaign.href} · статус в
-              кабинете:{" "}
-              {campaigns.draft.structureJson.campaign.initial_status}
-            </p>
-            {campaigns.draft.structureJson.ad_groups.map((group) => (
-              <div key={group.name} className="rounded border border-zinc-100 p-2">
-                <p className="font-medium">{group.name}</p>
-                <p className="text-xs text-zinc-500">
-                  Ключи: {group.keywords.slice(0, 8).join(", ")}
-                  {group.keywords.length > 8 ? "…" : ""}
-                </p>
-                <ul className="mt-1 list-disc pl-5">
-                  {group.ads.map((ad) => (
-                    <li key={`${group.name}-${ad.ab_group}`}>
-                      [{ad.ab_group}] {ad.headline1} / {ad.headline2} —{" "}
-                      {ad.description}
-                      <span className="ml-1 text-xs text-zinc-500">
-                        · сгенерировано по кластеру «{group.name}»
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {campaigns.draft.structureJson.publish?.error ? (
-              <p className="rounded border border-red-200 bg-red-50 p-2 text-red-800">
-                Сбой на шаге {campaigns.draft.structureJson.publish.step}:{" "}
-                {campaigns.draft.structureJson.publish.error}
-              </p>
-            ) : null}
             <Alert tone="info" title="Что произойдёт при нажатии «Запустить»">
               Кампания создастся в {platformTitle(project.primaryPlatform)} в
               статусе «на паузе». Показы не начнутся и бюджет не спишется, пока
@@ -1921,57 +2207,13 @@ function ProjectPageInner() {
       {tab === "brief" ? (
       <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
         <h2 className="mb-3 font-medium">Бриф</h2>
-        {brief ? (
-          <dl className="flex flex-col gap-2 text-sm">
-            <div>
-              <dt className="text-zinc-500">Сайт</dt>
-              <dd>{brief.project.website_url}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Гео</dt>
-              <dd>{brief.project.geo.join(", ")}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Бюджет</dt>
-              <dd>
-                {brief.project.budget.daily} {brief.project.budget.currency} /
-                день
-              </dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">УТП</dt>
-              <dd>
-                <ul className="list-disc pl-5">
-                  {brief.marketing.usp.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Аудитория</dt>
-              <dd>
-                {brief.marketing.target_audience
-                  .map((item) => item.segment)
-                  .join(", ")}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-zinc-500">Минус-слова</dt>
-              <dd>
-                {brief.exclusions.global_negative_keywords.length > 0
-                  ? brief.exclusions.global_negative_keywords.join(", ")
-                  : "—"}
-              </dd>
-            </div>
-          </dl>
-        ) : (
-          <EmptyState title="Создайте проект через мастер «Новый проект + бриф»">
-            Откройте портфель, пройдите шаги «О продукте» → «Аудитория и УТП» →
-            «Бюджет и гео» → «Подключить кабинет». Сайт, гео и УТП появятся
-            здесь.
-          </EmptyState>
-        )}
+        <BriefEditor
+          brief={brief}
+          websiteUrl={project.websiteUrl}
+          readOnly={readOnly}
+          pending={pending}
+          onSave={saveBrief}
+        />
       </section>
       ) : null}
     </AppShell>

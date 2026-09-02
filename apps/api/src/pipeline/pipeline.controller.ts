@@ -32,4 +32,12 @@ export class PipelineController {
   ) {
     return this.pipeline.enqueueOrRun(req.user.organizationId, id);
   }
+
+  @Post('cancel')
+  cancel(
+    @Req() req: { user: JwtPayload },
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.pipeline.cancel(req.user.organizationId, id);
+  }
 }

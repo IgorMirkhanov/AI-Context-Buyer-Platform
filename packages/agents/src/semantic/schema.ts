@@ -31,6 +31,7 @@ export const SEMANTIC_CORE_JSON_SCHEMA = {
                   enum: ["hot", "warm", "navigational"],
                 },
                 frequency: { type: "number", minimum: 0 },
+                source: { type: "string", minLength: 1 },
               },
             },
           },

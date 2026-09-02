@@ -5,6 +5,7 @@ import {
   AnthropicOptimizationLlm,
   HeuristicOptimizationLlm,
   buildOptimizationPlan,
+  optimizationComparePeriods,
   OPTIMIZATION_HEURISTIC_FALLBACK_MESSAGE,
 } from '@context-buyer/agents';
 import { OptimizationService } from './optimization.service';
@@ -61,7 +62,11 @@ describe('OptimizationService LLM wiring', () => {
   const connectors = { forPlatform: jest.fn() };
   const alerts = {};
   const audit = {};
-  const queue = { register: jest.fn(), schedule: jest.fn() };
+  const queue = {
+    register: jest.fn(),
+    schedule: jest.fn(),
+    enqueueBackground: jest.fn().mockResolvedValue({ jobId: 'job', queued: true }),
+  };
 
   let service: OptimizationService;
   let warnSpy: jest.SpyInstance;
@@ -77,6 +82,9 @@ describe('OptimizationService LLM wiring', () => {
       primaryPlatform: 'yandex_direct',
       autopilotEnabled: false,
       autopilotEnabledAt: null,
+      optimizationLaunchedAt: null,
+      optimizationLastRunAt: null,
+      optimizationNextRunAt: null,
     });
     prisma.campaign.findMany.mockResolvedValue([
       {
@@ -85,10 +93,13 @@ describe('OptimizationService LLM wiring', () => {
         budget: 5000,
       },
     ]);
+    const { current } = optimizationComparePeriods();
     prisma.performanceSnapshot.findMany.mockResolvedValue([
       {
         campaignId: 'camp-1',
-        date: new Date('2026-08-20T00:00:00.000Z'),
+        adGroupExternalId: '',
+        adGroupName: null,
+        date: new Date(`${current.to}T00:00:00.000Z`),
         impressions: 800,
         clicks: 40,
         spend: 800,

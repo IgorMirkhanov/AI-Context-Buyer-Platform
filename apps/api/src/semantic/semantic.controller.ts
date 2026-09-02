@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -14,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload';
 import { ProjectAccessGuard } from '../tenancy/project-access.guard';
 import { SemanticService } from './semantic.service';
+import { ResolveNegativeSuggestionDto } from './dto/resolve-negative-suggestion.dto';
 
 @Controller('projects/:id/semantic')
 @UseGuards(JwtAuthGuard, ProjectAccessGuard)
@@ -34,6 +36,21 @@ export class SemanticController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.semantic.getResult(req.user.organizationId, id);
+  }
+
+  @Post('negative-suggestions/:suggestionId')
+  resolveNegativeSuggestion(
+    @Req() req: { user: JwtPayload },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('suggestionId', ParseUUIDPipe) suggestionId: string,
+    @Body() body: ResolveNegativeSuggestionDto,
+  ) {
+    return this.semantic.resolveNegativeSuggestion(
+      req.user.organizationId,
+      id,
+      suggestionId,
+      body.action,
+    );
   }
 
   @Get('export')

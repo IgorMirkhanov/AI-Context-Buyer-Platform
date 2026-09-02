@@ -7,5 +7,6 @@ import { OptimizationController } from './optimization.controller';
   imports: [ConnectorsModule],
   controllers: [OptimizationController],
   providers: [OptimizationService],
+  exports: [OptimizationService],
 })
 export class OptimizationModule {}

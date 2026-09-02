@@ -84,3 +84,9 @@ export type AnalyticsView = {
   adGroups: AnalyticsAdGroupSlice[];
   pacing: PacingForecast;
 };
+
+export type Spend7dSummary = {
+  amount: number;
+  currency: string;
+  period: { from: string; to: string };
+};

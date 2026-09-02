@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fillCreateForm } from "./create-project";
+import { fillCreateForm, projectLink } from "./create-project";
 
 const stamp = Date.now().toString(36);
 const email = `portfolio.${stamp}@e2e.local`;
@@ -21,29 +21,37 @@ test.describe("Портфель Мои проекты", () => {
     await expect(page).toHaveURL(/\/projects$/);
     await expect(page.getByRole("heading", { name: "Мои проекты" })).toBeVisible();
 
-    await fillCreateForm(page, alertName, { platform: "yandex_direct" });
+    const alertProjectId = await fillCreateForm(page, alertName, {
+      platform: "yandex_direct",
+    });
+    const alertLink = projectLink(page, alertProjectId);
+
     await page.getByRole("button", { name: "Подключить Яндекс Директ" }).click();
     await expect(page).toHaveURL(/oauth=connected/, { timeout: 30_000 });
     await expect(page.getByText("Яндекс Директ подключён.")).toBeVisible();
     await expect(page.getByText("OAuth-токен скоро истечёт")).toBeVisible();
 
     await page.goto("/projects");
-    await fillCreateForm(page, quietYandex, { platform: "yandex_direct" });
+    const quietYandexId = await fillCreateForm(page, quietYandex, {
+      platform: "yandex_direct",
+    });
     await page.goto("/projects");
-    await fillCreateForm(page, quietGoogle, { platform: "google_ads" });
+    const quietGoogleId = await fillCreateForm(page, quietGoogle, {
+      platform: "google_ads",
+    });
     await page.goto("/projects");
 
-    await expect(page.getByRole("link", { name: alertName })).toBeVisible();
-    await expect(page.getByRole("link", { name: quietYandex })).toBeVisible();
-    await expect(page.getByRole("link", { name: quietGoogle })).toBeVisible();
+    await expect(alertLink).toBeVisible();
+    await expect(projectLink(page, quietYandexId)).toBeVisible();
+    await expect(projectLink(page, quietGoogleId)).toBeVisible();
 
     await page.getByLabel("Фильтр по алертам").selectOption("yes");
-    await expect(page.getByRole("link", { name: alertName })).toBeVisible();
-    await expect(page.getByRole("link", { name: quietYandex })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: quietGoogle })).toHaveCount(0);
+    await expect(alertLink).toBeVisible();
+    await expect(projectLink(page, quietYandexId)).toHaveCount(0);
+    await expect(projectLink(page, quietGoogleId)).toHaveCount(0);
 
-    await page.getByRole("link", { name: alertName }).click();
-    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}/);
+    await alertLink.click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${alertProjectId}`));
     await expect(page.getByRole("heading", { name: alertName })).toBeVisible();
     await expect(
       page.getByRole("navigation", { name: "Разделы проекта" }),

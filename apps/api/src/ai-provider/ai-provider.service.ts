@@ -33,7 +33,7 @@ export type AiProviderPublicStatus = {
   lastVerifiedAt: string | null;
 };
 
-const PROVIDERS: AiProviderName[] = ['anthropic', 'openai'];
+const PROVIDERS: AiProviderName[] = ['anthropic', 'groq', 'gemini', 'openai'];
 
 @Injectable()
 export class AiProviderService {
@@ -197,6 +197,8 @@ export class AiProviderService {
       envKey: readEnvAiKey(provider, {
         ANTHROPIC_API_KEY: this.config.get<string>('ANTHROPIC_API_KEY'),
         OPENAI_API_KEY: this.config.get<string>('OPENAI_API_KEY'),
+        GROQ_API_KEY: this.config.get<string>('GROQ_API_KEY'),
+        GEMINI_API_KEY: this.config.get<string>('GEMINI_API_KEY'),
       }),
     });
     if (!resolved) return null;
@@ -256,14 +258,29 @@ export class AiProviderService {
               headers: { Authorization: `Bearer ${apiKey}` },
               signal: AbortSignal.timeout(8000),
             })
-          : await fetch('https://api.anthropic.com/v1/models', {
-              method: 'GET',
-              headers: {
-                'x-api-key': apiKey,
-                'anthropic-version': '2023-06-01',
-              },
-              signal: AbortSignal.timeout(8000),
-            });
+          : provider === 'groq'
+            ? await fetch('https://api.groq.com/openai/v1/models', {
+                method: 'GET',
+                headers: { Authorization: `Bearer ${apiKey}` },
+                signal: AbortSignal.timeout(8000),
+              })
+            : provider === 'gemini'
+              ? await fetch(
+                  'https://generativelanguage.googleapis.com/v1beta/openai/models',
+                  {
+                    method: 'GET',
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                    signal: AbortSignal.timeout(8000),
+                  },
+                )
+              : await fetch('https://api.anthropic.com/v1/models', {
+                method: 'GET',
+                headers: {
+                  'x-api-key': apiKey,
+                  'anthropic-version': '2023-06-01',
+                },
+                signal: AbortSignal.timeout(8000),
+              });
       if (res.ok) return true;
       const body = redactAiSecret(await res.text().catch(() => ''));
       this.log.warn(`${provider} verify HTTP ${res.status}: ${body.slice(0, 180)}`);

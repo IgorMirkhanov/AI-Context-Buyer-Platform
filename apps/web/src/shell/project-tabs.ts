@@ -1,6 +1,8 @@
 export const PROJECT_TABS = [
   { id: "brief", label: "Бриф" },
+  { id: "analysis", label: "Анализ" },
   { id: "semantic", label: "Семантика" },
+  { id: "plan", label: "План" },
   { id: "ads", label: "Объявления" },
   { id: "campaign", label: "Кампания" },
   { id: "analytics", label: "Аналитика" },

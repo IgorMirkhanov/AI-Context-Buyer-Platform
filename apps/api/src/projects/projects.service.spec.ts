@@ -24,7 +24,7 @@ describe('ProjectsService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    projectBrief: { create: jest.fn() },
+    projectBrief: { create: jest.fn(), findFirst: jest.fn() },
     adPlatformCredential: { upsert: jest.fn(), deleteMany: jest.fn() },
     $transaction: jest.fn(),
   };
@@ -158,14 +158,14 @@ describe('ProjectsService', () => {
           role: 'owner',
         },
         {
-        name: 'Bad',
-        primaryPlatform: AdPlatform.yandex_direct,
-        websiteUrl: 'https://example.com',
-        geo: [],
-        budgetDaily: 5000,
-        usp: ['USP'],
-        targetAudience: [{ segment: 'Seg' }],
-        globalNegativeKeywords: [],
+          name: 'Bad',
+          primaryPlatform: AdPlatform.yandex_direct,
+          websiteUrl: 'https://example.com',
+          geo: [],
+          budgetDaily: 5000,
+          usp: ['USP'],
+          targetAudience: [{ segment: 'Seg' }],
+          globalNegativeKeywords: [],
         },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -194,6 +194,39 @@ describe('ProjectsService', () => {
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a new brief version for an existing project', async () => {
+    prisma.project.findFirst.mockResolvedValue({
+      id: 'p1',
+      organizationId: 'org-a',
+      primaryPlatform: AdPlatform.yandex_direct,
+    });
+    prisma.projectBrief.findFirst.mockResolvedValue({ version: 2 });
+    prisma.projectBrief.create.mockResolvedValue({ id: 'b3' });
+    prisma.project.update.mockResolvedValue({});
+
+    const result = await service.upsertBrief('org-a', 'p1', {
+      websiteUrl: 'https://shop.test',
+      geo: ['RU-MOW'],
+      budgetDaily: 4000,
+      usp: ['Доставка за день'],
+      targetAudience: [{ segment: 'Офисы' }],
+      globalNegativeKeywords: ['бесплатно'],
+    });
+
+    expect(prisma.projectBrief.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: 'p1',
+        version: 3,
+      }),
+    });
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { websiteUrl: 'https://shop.test' },
+    });
+    expect(result.version).toBe(3);
+    expect(result.brief.project.website_url).toBe('https://shop.test');
   });
 
   it('encrypts provider tokens before upserting credentials', async () => {
@@ -264,5 +297,40 @@ describe('ProjectsService', () => {
     expect(decryptSecret(upsert.update.accessTokenEncrypted, key)).toBe(
       'google-access',
     );
+  });
+
+  it('starts Yandex OAuth in mock mode without client id env', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        ProjectsService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) => {
+              if (key === 'JWT_SECRET') return 'jwt-test';
+              if (key === 'YANDEX_DIRECT_MOCK') return '1';
+              return undefined;
+            },
+          },
+        },
+        { provide: ConnectorRouter, useValue: connectors },
+        {
+          provide: AccessService,
+          useFactory: () => new AccessService(prisma as unknown as PrismaService),
+        },
+      ],
+    }).compile();
+    const mockService = module.get(ProjectsService);
+    prisma.project.findFirst.mockResolvedValue({
+      id: 'p1',
+      organizationId: 'org-a',
+      primaryPlatform: AdPlatform.yandex_direct,
+    });
+    yandex.buildAuthorizeUrl.mockReturnValue({ url: 'http://mock/oauth' });
+
+    await mockService.startYandexOAuth('org-a', 'p1');
+
+    expect(yandex.buildAuthorizeUrl).toHaveBeenCalled();
   });
 });

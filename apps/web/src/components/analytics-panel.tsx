@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
+import { formatCabinetSpend, cabinetCurrencySymbol } from "@/lib/cabinet-currency";
 import { Alert } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { btnClass } from "@/ui/button";
@@ -67,6 +69,11 @@ export type ReportResult = {
     actual: number;
     forecast: number | null;
     paceDaily: number | null;
+  };
+  spend7d?: {
+    amount: number;
+    currency: string;
+    period: { from: string; to: string };
   };
   llmUsage?: {
     calls: number;
@@ -180,6 +187,10 @@ export function AnalyticsPanel({
   onCollectReport,
   onConnectAttribution,
   onCollectAttribution,
+  cabinetConnected,
+  hasPublishedCampaigns,
+  hasCampaignDraft,
+  reportError,
 }: {
   projectId: string;
   report: ReportResult | null;
@@ -196,6 +207,10 @@ export function AnalyticsPanel({
   onCollectReport: () => Promise<void>;
   onConnectAttribution: () => Promise<void>;
   onCollectAttribution: () => Promise<void>;
+  cabinetConnected: boolean;
+  hasPublishedCampaigns: boolean;
+  hasCampaignDraft: boolean;
+  reportError: string | null;
 }) {
   const [days, setDays] = useState<PeriodDays>(7);
   const [metric, setMetric] = useState<CabinetMetric>("spend");
@@ -283,6 +298,40 @@ export function AnalyticsPanel({
             ? `${view.report.period.from} — ${view.report.period.to}`
             : "Снимков ещё нет. После запуска кампании нажмите «Обновить статистику»."}
         </CardHint>
+        {!cabinetConnected ? (
+          <Alert tone="alert" className="mb-3" title="Кабинет не подключён">
+            Подключите {`Яндекс Директ / Google Ads`} в блоке «Подключение кабинета»
+            выше — без OAuth статистику из рекламной платформы не получить.
+          </Alert>
+        ) : !hasPublishedCampaigns ? (
+          <Alert tone="info" className="mb-3" title="Кабинет подключён — осталось опубликовать кампанию">
+            OAuth работает, но в Директе ещё нет кампании из этого проекта.
+            {hasCampaignDraft ? (
+              <>
+                {" "}
+                Черновик готов — откройте вкладку{" "}
+                <Link
+                  href={`/projects/${projectId}?tab=campaign`}
+                  className="font-medium underline"
+                >
+                  «Кампания»
+                </Link>
+                , подтвердите чекбокс и нажмите «Запустить кампанию».
+              </>
+            ) : (
+              <>
+                {" "}
+                Сначала прогоните пайплайн до черновика или соберите кампанию на
+                вкладке «Кампания».
+              </>
+            )}
+          </Alert>
+        ) : null}
+        {reportError ? (
+          <Alert tone="danger" className="mb-3">
+            {reportError}
+          </Alert>
+        ) : null}
         <div className="mb-3 flex flex-wrap gap-2">
           {([7, 30, 90] as const).map((item) => (
             <button
@@ -300,15 +349,26 @@ export function AnalyticsPanel({
             </button>
           ))}
         </div>
-        <button
-          className={btnClass("primary", "mb-4")}
-          onClick={() => void onCollectReport()}
-          disabled={pending || readOnly}
-        >
-          {pending ? "Собираем…" : "Обновить статистику"}
-        </button>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <button
+            className={btnClass("primary")}
+            onClick={() => void onCollectReport()}
+            disabled={pending || readOnly || !cabinetConnected || !hasPublishedCampaigns}
+          >
+            {pending ? "Собираем…" : "Обновить статистику"}
+          </button>
+          {cabinetConnected && !hasPublishedCampaigns && hasCampaignDraft ? (
+            <Link
+              href={`/projects/${projectId}?tab=campaign`}
+              className={btnClass("secondary")}
+            >
+              Перейти к публикации
+            </Link>
+          ) : null}
+        </div>
         {view ? (
           <div className="flex flex-col gap-4 text-sm">
+            <Spend7dBlock spend7d={view.spend7d} />
             <div className="flex flex-wrap items-center gap-2">
               <Badge kind="info">Рекламный кабинет</Badge>
               <span className="text-xs text-[var(--fg-muted)]">
@@ -552,6 +612,25 @@ export function AnalyticsPanel({
   );
 }
 
+function Spend7dBlock({
+  spend7d,
+}: {
+  spend7d?: ReportResult["spend7d"];
+}) {
+  if (!spend7d) return null;
+  const label = formatCabinetSpend(spend7d.amount, spend7d.currency);
+  return (
+    <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-muted)] px-4 py-3">
+      <p className="text-xs text-[var(--fg-muted)]">Потрачено за 7 дней</p>
+      <p className="text-2xl font-semibold tracking-tight">{label}</p>
+      <p className="mt-1 text-xs text-[var(--fg-muted)]">
+        {spend7d.period.from} — {spend7d.period.to} · сумма по кампаниям из
+        кабинета
+      </p>
+    </div>
+  );
+}
+
 function Kpi({ label, value }: { label: ReactNode; value: string }) {
   return (
     <div className="rounded border border-zinc-100 p-2">
@@ -725,7 +804,7 @@ function PacingBar({
   const actualPct = (pacing.actual / max) * 100;
   const forecastPct =
     pacing.forecast != null ? (pacing.forecast / max) * 100 : null;
-  const unit = pacing.currency || "₽";
+  const unit = cabinetCurrencySymbol(pacing.currency);
   return (
     <div>
       <p className="mb-1 text-xs font-medium">

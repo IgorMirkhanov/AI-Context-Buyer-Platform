@@ -6,6 +6,7 @@ export type SemanticKeyword = {
   phrase: string;
   intent: KeywordIntent;
   frequency: number;
+  source?: string;
 };
 
 export type SemanticCluster = {
@@ -18,6 +19,16 @@ export type SemanticCluster = {
 export type SemanticCore = {
   clusters: SemanticCluster[];
   global_negatives: string[];
+};
+
+export type SuggestedNegativeWord = {
+  phrase: string;
+  reason: string;
+};
+
+export type SemanticPipelineResult = {
+  core: SemanticCore;
+  suggested_negative_words: SuggestedNegativeWord[];
 };
 
 export type SemanticBriefInput = {

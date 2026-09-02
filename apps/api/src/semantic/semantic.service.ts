@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { AgentTaskStatus, AgentType, KeywordIntent } from '@prisma/client';
+import { AgentTaskStatus, AgentType, KeywordIntent, NegativeSuggestionStatus } from '@prisma/client';
 import {
   resolveLlmCostUsd,
   resolveSemanticLlm,
@@ -12,10 +12,12 @@ import {
   SemanticBriefInput,
   SemanticCore,
   SemanticCoreValidationError,
+  isCommercialKeyword,
 } from '@context-buyer/agents';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
+import { validateProjectBrief, BriefValidationError } from '../briefs/brief.validator';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
 
 @Injectable()
@@ -41,6 +43,14 @@ export class SemanticService {
     if (!briefRow) {
       throw new BadRequestException('Project brief is missing');
     }
+    const analysis = await this.prisma.projectAnalysis.findUnique({
+      where: { projectId },
+    });
+    if (!analysis) {
+      throw new BadRequestException(
+        'Сначала выполните анализ на вкладке «Анализ»',
+      );
+    }
 
     const task = await this.prisma.agentTask.create({
       data: {
@@ -59,10 +69,13 @@ export class SemanticService {
       const connector = this.connectors.forPlatform(project.primaryPlatform);
       const { llm, mode } = resolveSemanticLlm({
         apiKey: credentials?.apiKey ?? null,
+        provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
-      const core = await runSemanticPipeline(brief, {
+      const { core, suggested_negative_words } = await runSemanticPipeline(brief, {
         llm,
+        landingText: analysis.landingText,
+        extraSeeds: analysis.customSeeds,
         getKeywordIdeas: (seeds, geo) =>
           connector.getKeywordIdeas(seeds, geo),
         onLlmCall: async (usage) => {
@@ -84,6 +97,7 @@ export class SemanticService {
       });
 
       await this.persistCore(projectId, core);
+      await this.persistNegativeSuggestions(projectId, suggested_negative_words);
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -126,8 +140,20 @@ export class SemanticService {
       where: { projectId, agentType: AgentType.semantic },
       orderBy: { startedAt: 'desc' },
     });
+    const negativeSuggestions = await this.prisma.semanticNegativeSuggestion.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+    });
     return {
       task: lastTask,
+      negativeSuggestions: negativeSuggestions.map((item) => ({
+        id: item.id,
+        phrase: item.phrase,
+        reason: item.reason,
+        status: item.status,
+        createdAt: item.createdAt,
+        resolvedAt: item.resolvedAt,
+      })),
       clusters: clusters.map((cluster) => ({
         id: cluster.id,
         name: cluster.name,
@@ -139,12 +165,190 @@ export class SemanticService {
             intent: item.intent,
             frequency: item.frequency,
             source: item.source,
+            isCommercial: isCommercialKeyword(
+              item.phrase,
+              item.intent as 'hot' | 'warm' | 'navigational',
+            ),
           })),
         negativeKeywords: cluster.keywords
           .filter((item) => item.isNegative)
           .map((item) => item.phrase),
       })),
     };
+  }
+
+  async resolveNegativeSuggestion(
+    organizationId: string,
+    projectId: string,
+    suggestionId: string,
+    action: 'accept' | 'reject',
+  ) {
+    await this.requireProject(organizationId, projectId);
+    const suggestion = await this.prisma.semanticNegativeSuggestion.findFirst({
+      where: {
+        id: suggestionId,
+        projectId,
+        status: NegativeSuggestionStatus.pending,
+      },
+    });
+    if (!suggestion) {
+      throw new NotFoundException('Предложение не найдено или уже обработано');
+    }
+
+    if (action === 'reject') {
+      await this.prisma.semanticNegativeSuggestion.update({
+        where: { id: suggestionId },
+        data: {
+          status: NegativeSuggestionStatus.rejected,
+          resolvedAt: new Date(),
+        },
+      });
+      return { status: 'rejected', phrase: suggestion.phrase };
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      include: { briefs: { orderBy: { version: 'desc' }, take: 1 } },
+    });
+    const briefRow = project?.briefs[0];
+    if (!briefRow) {
+      throw new BadRequestException('Бриф проекта не найден');
+    }
+
+    const payload = briefRow.payloadJson as ProjectBriefPayload;
+    const existing = new Set(
+      payload.exclusions.global_negative_keywords.map((item) =>
+        item.trim().toLowerCase(),
+      ),
+    );
+    const phrase = suggestion.phrase.trim().toLowerCase();
+
+    await this.prisma.$transaction(async (tx) => {
+      if (!existing.has(phrase)) {
+        const nextPayload: ProjectBriefPayload = {
+          ...payload,
+          exclusions: {
+            ...payload.exclusions,
+            global_negative_keywords: [
+              ...payload.exclusions.global_negative_keywords,
+              suggestion.phrase.trim(),
+            ],
+          },
+        };
+        try {
+          validateProjectBrief(nextPayload);
+        } catch (err) {
+          if (err instanceof BriefValidationError) {
+            throw new BadRequestException({
+              message: 'Invalid project brief',
+              details: err.details,
+            });
+          }
+          throw err;
+        }
+        await tx.projectBrief.create({
+          data: {
+            projectId,
+            version: briefRow.version + 1,
+            payloadJson: nextPayload,
+          },
+        });
+      }
+      await tx.semanticNegativeSuggestion.update({
+        where: { id: suggestionId },
+        data: {
+          status: NegativeSuggestionStatus.accepted,
+          resolvedAt: new Date(),
+        },
+      });
+    });
+
+    return { status: 'accepted', phrase: suggestion.phrase };
+  }
+
+  async acceptAllPendingNegativeSuggestions(
+    organizationId: string,
+    projectId: string,
+  ) {
+    await this.requireProject(organizationId, projectId);
+    const pending = await this.prisma.semanticNegativeSuggestion.findMany({
+      where: { projectId, status: NegativeSuggestionStatus.pending },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (pending.length === 0) {
+      return { accepted: [] as string[] };
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      include: { briefs: { orderBy: { version: 'desc' }, take: 1 } },
+    });
+    const briefRow = project?.briefs[0];
+    if (!briefRow) {
+      throw new BadRequestException('Бриф проекта не найден');
+    }
+
+    const payload = briefRow.payloadJson as ProjectBriefPayload;
+    const existing = new Set(
+      payload.exclusions.global_negative_keywords.map((item) =>
+        item.trim().toLowerCase(),
+      ),
+    );
+    const toAdd: string[] = [];
+    for (const item of pending) {
+      const phrase = item.phrase.trim();
+      const key = phrase.toLowerCase();
+      if (!key || existing.has(key)) {
+        continue;
+      }
+      existing.add(key);
+      toAdd.push(phrase);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (toAdd.length > 0) {
+        const nextPayload: ProjectBriefPayload = {
+          ...payload,
+          exclusions: {
+            ...payload.exclusions,
+            global_negative_keywords: [
+              ...payload.exclusions.global_negative_keywords,
+              ...toAdd,
+            ],
+          },
+        };
+        try {
+          validateProjectBrief(nextPayload);
+        } catch (err) {
+          if (err instanceof BriefValidationError) {
+            throw new BadRequestException({
+              message: 'Invalid project brief',
+              details: err.details,
+            });
+          }
+          throw err;
+        }
+        await tx.projectBrief.create({
+          data: {
+            projectId,
+            version: briefRow.version + 1,
+            payloadJson: nextPayload,
+          },
+        });
+      }
+      await tx.semanticNegativeSuggestion.updateMany({
+        where: {
+          projectId,
+          status: NegativeSuggestionStatus.pending,
+        },
+        data: {
+          status: NegativeSuggestionStatus.accepted,
+          resolvedAt: new Date(),
+        },
+      });
+    });
+
+    return { accepted: pending.map((item) => item.phrase) };
   }
 
   async exportCsv(organizationId: string, projectId: string): Promise<string> {
@@ -155,8 +359,10 @@ export class SemanticService {
         'category',
         'phrase',
         'intent',
+        'commercial',
         'frequency',
         'is_negative',
+        'source',
       ].join(','),
     ];
     for (const cluster of result.clusters) {
@@ -167,8 +373,10 @@ export class SemanticService {
             csv(cluster.category),
             csv(kw.phrase),
             csv(kw.intent),
+            String(kw.isCommercial ?? false),
             String(kw.frequency),
             'false',
+            csv(kw.source ?? 'mock_wordstat'),
           ].join(','),
         );
       }
@@ -181,6 +389,7 @@ export class SemanticService {
             '',
             '0',
             'true',
+            'cross_minus',
           ].join(','),
         );
       }
@@ -236,7 +445,7 @@ export class SemanticService {
               frequency: Math.round(kw.frequency),
               intent: kw.intent,
               isNegative: false,
-              source: 'mock_wordstat',
+              source: kw.source ?? 'mock_wordstat',
             })),
           });
         }
@@ -264,6 +473,56 @@ export class SemanticService {
             isNegative: true,
             source: 'brief_global',
           })),
+        });
+      }
+    });
+  }
+
+  private async persistNegativeSuggestions(
+    projectId: string,
+    suggestions: Array<{ phrase: string; reason: string }>,
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.semanticNegativeSuggestion.deleteMany({
+        where: { projectId, status: NegativeSuggestionStatus.pending },
+      });
+      if (suggestions.length === 0) {
+        return;
+      }
+      const resolved = await tx.semanticNegativeSuggestion.findMany({
+        where: {
+          projectId,
+          status: {
+            in: [
+              NegativeSuggestionStatus.accepted,
+              NegativeSuggestionStatus.rejected,
+            ],
+          },
+        },
+        select: { phrase: true },
+      });
+      const skip = new Set(
+        resolved.map((item) => item.phrase.trim().toLowerCase()),
+      );
+      for (const item of suggestions) {
+        const phrase = item.phrase.trim().toLowerCase();
+        if (!phrase || skip.has(phrase)) {
+          continue;
+        }
+        await tx.semanticNegativeSuggestion.upsert({
+          where: {
+            projectId_phrase: { projectId, phrase },
+          },
+          create: {
+            projectId,
+            phrase,
+            reason: item.reason,
+          },
+          update: {
+            reason: item.reason,
+            status: NegativeSuggestionStatus.pending,
+            resolvedAt: null,
+          },
         });
       }
     });

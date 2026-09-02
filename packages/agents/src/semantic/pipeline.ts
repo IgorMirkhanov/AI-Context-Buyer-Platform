@@ -21,9 +21,12 @@ import {
   SemanticCluster,
   SemanticCore,
   SemanticKeyword,
+  SemanticPipelineResult,
+  SuggestedNegativeWord,
 } from "./types";
 import { validateSemanticCore } from "./validate";
 import { normalizePhrase } from "./qa-compare";
+import { mergeSeedMasks } from "../analysis/pipeline";
 
 export type KeywordIdeasFn = (
   seeds: string[],
@@ -36,6 +39,7 @@ export type SemanticPipelineDeps = {
   vectorIndex?: VectorIndex;
   getKeywordIdeas: KeywordIdeasFn;
   landingText?: string;
+  extraSeeds?: string[];
   onLlmCall?: (usage: LlmUsage) => Promise<void> | void;
   /** Resolved org key (DB, else env). Heuristic path ignores it. */
   apiKey?: string | null;
@@ -70,6 +74,40 @@ export function filterKeywordsStep(
   return filterKeywordIdeas(ideas, negatives);
 }
 
+/** LLM-расширение по ручным seed-словам; heuristic-путь возвращает пустой список. */
+export async function suggestFromSeedWordsStep(
+  ideas: KeywordIdea[],
+  brief: SemanticBriefInput,
+  seedWords: string[],
+  llm: SemanticLlm,
+): Promise<KeywordIdea[]> {
+  if (seedWords.length === 0) {
+    return ideas;
+  }
+  const existingPhrases = ideas.map((item) => item.phrase);
+  const { phrases } = await llm.suggestFromSeedWords(
+    brief,
+    seedWords,
+    existingPhrases,
+  );
+  if (phrases.length === 0) {
+    return ideas;
+  }
+  const seen = new Set(existingPhrases.map(normalizePhrase));
+  const extras: KeywordIdea[] = [];
+  for (const phrase of phrases) {
+    const normalized = normalizePhrase(phrase);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    extras.push({
+      phrase: normalized,
+      frequency: 1,
+      source: "llm_seed_expand",
+    });
+  }
+  return [...ideas, ...extras];
+}
+
 /** LLM-подсказки near-intent поверх Wordstat; heuristic-путь возвращает пустой список. */
 export async function suggestNearIntentStep(
   ideas: KeywordIdea[],
@@ -96,6 +134,42 @@ export async function suggestNearIntentStep(
   return [...ideas, ...extras];
 }
 
+/** Подсказки минус-слов по собранной семантике; heuristic без ключа — пустой список. */
+export async function suggestNegativeWordsStep(
+  brief: SemanticBriefInput,
+  keywords: SemanticKeyword[],
+  llm: SemanticLlm,
+): Promise<SuggestedNegativeWord[]> {
+  if (keywords.length === 0) {
+    return [];
+  }
+  const collectedKeywords = keywords.map((item) => item.phrase);
+  const { negatives } = await llm.suggestNegativeWords(
+    brief,
+    collectedKeywords,
+  );
+  if (negatives.length === 0) {
+    return [];
+  }
+  const blocked = new Set(
+    generateNegativesStep(brief).map((item) => normalizePhrase(item)),
+  );
+  const seen = new Set<string>();
+  const result: SuggestedNegativeWord[] = [];
+  for (const item of negatives) {
+    const phrase = normalizePhrase(item.phrase);
+    if (!phrase || phrase.length < 2 || blocked.has(phrase) || seen.has(phrase)) {
+      continue;
+    }
+    seen.add(phrase);
+    result.push({
+      phrase,
+      reason: item.reason.trim() || "нецелевой интент в собранной семантике",
+    });
+  }
+  return result.slice(0, 15);
+}
+
 export async function labelIntentStep(
   ideas: KeywordIdea[],
   llm: SemanticLlm,
@@ -110,6 +184,7 @@ export async function labelIntentStep(
       phrase: idea.phrase,
       intent: heuristic ?? "warm",
       frequency: idea.frequency,
+      source: idea.source,
     };
   });
 
@@ -206,7 +281,7 @@ export function finalizeStep(
 export async function runSemanticPipeline(
   brief: SemanticBriefInput,
   deps: SemanticPipelineDeps,
-): Promise<SemanticCore> {
+): Promise<SemanticPipelineResult> {
   const llm = deps.llm ?? new HeuristicSemanticLlm();
   const embeddings = deps.embeddings ?? new HashNgramEmbeddings();
   const vectorIndex = deps.vectorIndex ?? new InMemoryVectorIndex();
@@ -216,6 +291,8 @@ export async function runSemanticPipeline(
   const originalClassify = llm.classifyIntents.bind(llm);
   const originalName = llm.nameCluster.bind(llm);
   const originalNearIntent = llm.suggestNearIntentPhrases.bind(llm);
+  const originalSeedExpand = llm.suggestFromSeedWords.bind(llm);
+  const originalNegativeWords = llm.suggestNegativeWords.bind(llm);
   const wrapped: SemanticLlm = {
     extractMasks: async (b, t) => {
       const result = await originalExtract(b, t);
@@ -237,15 +314,35 @@ export async function runSemanticPipeline(
       await deps.onLlmCall?.(result.usage);
       return result;
     },
+    suggestFromSeedWords: async (b, seeds, existing) => {
+      const result = await originalSeedExpand(b, seeds, existing);
+      await deps.onLlmCall?.(result.usage);
+      return result;
+    },
+    suggestNegativeWords: async (b, collected) => {
+      const result = await originalNegativeWords(b, collected);
+      await deps.onLlmCall?.(result.usage);
+      return result;
+    },
   };
 
-  const masks = await extractMasksStep(brief, wrapped, landingText);
+  const extraSeeds = deps.extraSeeds ?? [];
+  const masks = mergeSeedMasks(
+    await extractMasksStep(brief, wrapped, landingText),
+    extraSeeds,
+  );
   const ideas = await expandKeywordsStep(
     masks,
     brief.geo,
     deps.getKeywordIdeas,
   );
-  const filtered = filterKeywordsStep(ideas, brief);
+  const withSeedExpand = await suggestFromSeedWordsStep(
+    ideas,
+    brief,
+    extraSeeds,
+    wrapped,
+  );
+  const filtered = filterKeywordsStep(withSeedExpand, brief);
   const withNearIntent = await suggestNearIntentStep(filtered, brief, wrapped);
   const relabeled = filterKeywordsStep(withNearIntent, brief);
   const labeled = await labelIntentStep(relabeled, wrapped);
@@ -258,5 +355,10 @@ export async function runSemanticPipeline(
   );
   const core = finalizeStep(clusters, globalNegatives);
   validateSemanticCore(core);
-  return core;
+  const suggested_negative_words = await suggestNegativeWordsStep(
+    brief,
+    labeled,
+    wrapped,
+  );
+  return { core, suggested_negative_words };
 }

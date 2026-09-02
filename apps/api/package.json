@@ -20,7 +20,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "qa:semantic": "ts-node --transpile-only --project tsconfig.qa.json src/semantic/qa.cli.ts"
+    "qa:semantic": "ts-node --transpile-only --project tsconfig.qa.json src/semantic/qa.cli.ts",
+    "qa:semantic:record-llm": "ts-node --transpile-only --project tsconfig.qa.json src/semantic/qa-record-llm.cli.ts"
   },
   "dependencies": {
     "@context-buyer/agents": "*",

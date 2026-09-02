@@ -1,3 +1,5 @@
+import { isCommercialKeyword } from "./heuristics";
+
 export type PhraseSource = {
   phrase: string;
   source: string;
@@ -56,6 +58,42 @@ export type SemanticQaMetrics = {
   negativeMissing: PhraseSource[];
   negativeExtra: string[];
 };
+
+export type CommercialGoldRecallMetrics = {
+  commercialGoldCount: number;
+  commercialFound: string[];
+  commercialMissing: PhraseSource[];
+  commercialRecall: number | null;
+};
+
+/** Recall только по коммерческим эталонным ключам (UI-фильтр не должен их терять). */
+export function compareCommercialGoldRecall(
+  fixture: SemanticQaFixture,
+  agent: SemanticQaAgentOutput,
+): CommercialGoldRecallMetrics {
+  const commercialGold = fixture.gold.keywords.filter((item) =>
+    isCommercialKeyword(item.phrase, item.intent),
+  );
+  const agentSet = new Set(agent.phrases.map(normalizePhrase));
+  const commercialFound: string[] = [];
+  const commercialMissing: PhraseSource[] = [];
+  for (const item of commercialGold) {
+    const key = normalizePhrase(item.phrase);
+    if (agentSet.has(key)) commercialFound.push(key);
+    else commercialMissing.push(item);
+  }
+  const commercialGoldCount = commercialGold.length;
+  const commercialRecall =
+    commercialGoldCount === 0
+      ? null
+      : commercialFound.length / commercialGoldCount;
+  return {
+    commercialGoldCount,
+    commercialFound,
+    commercialMissing,
+    commercialRecall,
+  };
+}
 
 export function normalizePhrase(phrase: string): string {
   return phrase.trim().toLowerCase().replace(/\s+/g, " ");

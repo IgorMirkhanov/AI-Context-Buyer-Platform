@@ -117,7 +117,7 @@ describe('Semantic Agent pipeline steps', () => {
 
   it('runs the full pipeline from brief to semantic_core', async () => {
     const logs: string[] = [];
-    const core = await runSemanticPipeline(brief, {
+    const { core } = await runSemanticPipeline(brief, {
       getKeywordIdeas: (seeds, geo) => ideas.getKeywordIdeas(seeds, geo),
       onLlmCall: (usage) => {
         logs.push(usage.step);

@@ -51,13 +51,15 @@ const input = {
 describe('Campaign Builder', () => {
   it('builds a pending campaign_draft from semantic_core + ads + brief', () => {
     const draft = buildCampaignDraft(input);
-    expect(draft.campaign.initial_status).toBe('paused');
-    expect(draft.campaign.budget_daily).toBe(5000);
-    expect(draft.campaign.geo).toEqual(['RU-MOW']);
-    expect(draft.ad_groups).toHaveLength(1);
-    expect(draft.ad_groups[0].ads).toHaveLength(2);
-    expect(draft.ad_groups[0].keywords).toContain('купить asus rog');
-    expect(draft.publish?.step).toBe('idle');
+    const unit = draft.campaigns[0];
+    expect(unit.campaign.initial_status).toBe('paused');
+    expect(unit.campaign.budget_daily).toBe(5000);
+    expect(unit.campaign.geo).toEqual(['RU-MOW']);
+    expect(draft.campaigns).toHaveLength(1);
+    expect(draft.campaigns[0].ad_groups).toHaveLength(1);
+    expect(draft.campaigns[0].ad_groups[0].ads).toHaveLength(2);
+    expect(draft.campaigns[0].ad_groups[0].keywords).toContain('купить asus rog');
+    expect(draft.campaigns[0].publish?.step).toBe('idle');
     expect(() => validateCampaignDraft(draft)).not.toThrow(
       CampaignDraftValidationError,
     );
@@ -89,38 +91,43 @@ describe('Yandex Direct publish pipeline (mock API)', () => {
     const api = new MockYandexDirectApi();
     const yandex = connector(api);
     const draft = buildCampaignDraft(input);
-    const campaignId = await yandex.createCampaign('project-1', draft, auth);
+    const unit = draft.campaigns[0];
+    const campaignId = await yandex.createCampaign('project-1', {
+      campaign: unit.campaign,
+      ad_groups: unit.ad_groups,
+      global_negatives: draft.global_negatives,
+    }, auth);
     const groupIds = await yandex.createAdGroups(
       'project-1',
       campaignId,
-      draft.ad_groups.map((group) => ({
+      unit.ad_groups.map((group) => ({
         name: group.name,
-        geo: draft.campaign.geo,
+        geo: unit.campaign.geo,
       })),
       auth,
     );
     await yandex.createAds(
       'project-1',
       groupIds[0],
-      draft.ad_groups[0].ads,
+      unit.ad_groups[0].ads,
       auth,
     );
     await yandex.addKeywords(
       'project-1',
       groupIds[0],
-      draft.ad_groups[0].keywords,
+      unit.ad_groups[0].keywords,
       auth,
     );
     await yandex.addNegativeKeywords(
       'project-1',
       { type: 'ad_group', id: groupIds[0] },
-      draft.ad_groups[0].negative_keywords,
+      unit.ad_groups[0].negative_keywords,
       auth,
     );
     await yandex.setBudget(
       'project-1',
       campaignId,
-      draft.campaign.budget_daily,
+      unit.campaign.budget_daily,
       auth,
     );
     expect(api.calls.map((item) => item.method)).toEqual(
@@ -139,7 +146,16 @@ describe('Yandex Direct publish pipeline (mock API)', () => {
     const api = new MockYandexDirectApi();
     const yandex = connector(api);
     const draft = buildCampaignDraft(input);
-    const campaignId = await yandex.createCampaign('project-1', draft, auth);
+    const unit = draft.campaigns[0];
+    const campaignId = await yandex.createCampaign(
+      'project-1',
+      {
+        campaign: unit.campaign,
+        ad_groups: unit.ad_groups,
+        global_negatives: draft.global_negatives,
+      },
+      auth,
+    );
     api.failAt = 'createAdGroups';
     await expect(
       yandex.createAdGroups(
@@ -183,38 +199,47 @@ describe('Google Ads publish pipeline (mock API, same Campaign Builder output)',
     const api = new MockGoogleAdsApi();
     const google = connector(api);
     const draft = buildCampaignDraft(input);
-    const campaignId = await google.createCampaign('project-1', draft, auth);
+    const unit = draft.campaigns[0];
+    const campaignId = await google.createCampaign(
+      'project-1',
+      {
+        campaign: unit.campaign,
+        ad_groups: unit.ad_groups,
+        global_negatives: draft.global_negatives,
+      },
+      auth,
+    );
     const groupIds = await google.createAdGroups(
       'project-1',
       campaignId,
-      draft.ad_groups.map((group) => ({
+      unit.ad_groups.map((group) => ({
         name: group.name,
-        geo: draft.campaign.geo,
+        geo: unit.campaign.geo,
       })),
       auth,
     );
     await google.createAds(
       'project-1',
       groupIds[0],
-      draft.ad_groups[0].ads,
+      unit.ad_groups[0].ads,
       auth,
     );
     await google.addKeywords(
       'project-1',
       groupIds[0],
-      draft.ad_groups[0].keywords,
+      unit.ad_groups[0].keywords,
       auth,
     );
     await google.addNegativeKeywords(
       'project-1',
       { type: 'ad_group', id: groupIds[0] },
-      draft.ad_groups[0].negative_keywords,
+      unit.ad_groups[0].negative_keywords,
       auth,
     );
     await google.setBudget(
       'project-1',
       campaignId,
-      draft.campaign.budget_daily,
+      unit.campaign.budget_daily,
       auth,
     );
     expect(api.calls.map((item) => item.method)).toEqual(
@@ -234,7 +259,16 @@ describe('Google Ads publish pipeline (mock API, same Campaign Builder output)',
     const api = new MockGoogleAdsApi();
     const google = connector(api);
     const draft = buildCampaignDraft(input);
-    const campaignId = await google.createCampaign('project-1', draft, auth);
+    const unit = draft.campaigns[0];
+    const campaignId = await google.createCampaign(
+      'project-1',
+      {
+        campaign: unit.campaign,
+        ad_groups: unit.ad_groups,
+        global_negatives: draft.global_negatives,
+      },
+      auth,
+    );
     api.failAt = 'createAdGroups';
     await expect(
       google.createAdGroups(

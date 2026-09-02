@@ -29,6 +29,7 @@ describe('SemanticService LLM wiring', () => {
     project: { findFirst: jest.fn() },
     projectBrief: { findFirst: jest.fn() },
     briefs: undefined as unknown,
+    projectAnalysis: { findUnique: jest.fn() },
     agentTask: {
       create: jest.fn(),
       update: jest.fn(),
@@ -44,8 +45,19 @@ describe('SemanticService LLM wiring', () => {
           create: jest.fn().mockResolvedValue({ id: 'cluster-1' }),
         },
         keywordEmbedding: { deleteMany: jest.fn() },
+        semanticNegativeSuggestion: {
+          deleteMany: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+          upsert: jest.fn(),
+        },
+        projectBrief: { create: jest.fn() },
       }),
     ),
+    semanticNegativeSuggestion: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
   };
 
   const connectors = {
@@ -85,18 +97,25 @@ describe('SemanticService LLM wiring', () => {
         },
       ],
     });
+    prisma.projectAnalysis.findUnique.mockResolvedValue({
+      landingText: 'landing page text',
+      customSeeds: ['custom seed'],
+    });
     prisma.agentTask.create.mockResolvedValue({ id: 'task-1' });
     prisma.agentTask.update.mockResolvedValue({});
     runSemanticPipelineMock.mockResolvedValue({
-      clusters: [
-        {
-          cluster_name: 'test',
-          category: 'generic',
-          keywords: [{ phrase: 'купить test', intent: 'hot', frequency: 10 }],
-          negative_keywords: [],
-        },
-      ],
-      global_negatives: [],
+      core: {
+        clusters: [
+          {
+            cluster_name: 'test',
+            category: 'generic',
+            keywords: [{ phrase: 'купить test', intent: 'hot', frequency: 10 }],
+            negative_keywords: [],
+          },
+        ],
+        global_negatives: [],
+      },
+      suggested_negative_words: [],
     });
 
     const moduleRef = await Test.createTestingModule({
@@ -127,6 +146,8 @@ describe('SemanticService LLM wiring', () => {
       expect.any(Object),
       expect.objectContaining({
         llm: expect.any(AnthropicSemanticLlm),
+        landingText: 'landing page text',
+        extraSeeds: ['custom seed'],
       }),
     );
     expect(result.llmMode).toBe('anthropic');

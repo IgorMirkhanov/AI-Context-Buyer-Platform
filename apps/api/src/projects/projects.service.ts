@@ -9,6 +9,7 @@ import { AdPlatform, ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { UpsertBriefDto } from './dto/upsert-brief.dto';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { AccessService } from '../tenancy/access.service';
 import { JwtPayload } from '../auth/jwt-payload';
@@ -89,7 +90,7 @@ export class ProjectsService {
   async createForOrganization(user: JwtPayload, dto: CreateProjectDto) {
     this.access.assertOrgWide(user);
     const organizationId = user.organizationId;
-    const payload = this.buildBriefPayload(dto);
+    const payload = this.buildBriefPayload(dto, dto.primaryPlatform);
     try {
       validateProjectBrief(payload);
     } catch (err) {
@@ -122,6 +123,48 @@ export class ProjectsService {
     });
   }
 
+  async upsertBrief(
+    organizationId: string,
+    projectId: string,
+    dto: UpsertBriefDto,
+  ) {
+    const project = await this.requireProject(organizationId, projectId);
+    const payload = this.buildBriefPayload(dto, project.primaryPlatform);
+    try {
+      validateProjectBrief(payload);
+    } catch (err) {
+      if (err instanceof BriefValidationError) {
+        throw new BadRequestException({
+          message: 'Invalid project brief',
+          details: err.details,
+        });
+      }
+      throw err;
+    }
+
+    const latest = await this.prisma.projectBrief.findFirst({
+      where: { projectId },
+      orderBy: { version: 'desc' },
+    });
+    const version = (latest?.version ?? 0) + 1;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.projectBrief.create({
+        data: {
+          projectId,
+          version,
+          payloadJson: payload,
+        },
+      });
+      await tx.project.update({
+        where: { id: projectId },
+        data: { websiteUrl: dto.websiteUrl },
+      });
+    });
+
+    return { brief: payload, version };
+  }
+
   async startYandexOAuth(organizationId: string, projectId: string) {
     const project = await this.requireProject(organizationId, projectId);
     if (project.primaryPlatform !== AdPlatform.yandex_direct) {
@@ -130,6 +173,7 @@ export class ProjectsService {
     return this.startOAuth(
       project,
       'YANDEX_CLIENT_ID',
+      'YANDEX_DIRECT_MOCK',
       'Yandex Direct OAuth is not configured',
     );
   }
@@ -142,6 +186,7 @@ export class ProjectsService {
     return this.startOAuth(
       project,
       'GOOGLE_ADS_CLIENT_ID',
+      'GOOGLE_ADS_MOCK',
       'Google Ads OAuth is not configured',
     );
   }
@@ -213,10 +258,14 @@ export class ProjectsService {
   private startOAuth(
     project: { id: string; organizationId: string; primaryPlatform: AdPlatform },
     clientIdKey: string,
+    mockEnvKey: string,
     missingMessage: string,
   ) {
+    const mock =
+      this.config.get<string>(mockEnvKey) === '1' ||
+      this.config.get<string>(mockEnvKey) === 'true';
     const clientId = this.config.get<string>(clientIdKey)?.trim();
-    if (!clientId) {
+    if (!mock && !clientId) {
       throw new ServiceUnavailableException(missingMessage);
     }
     const state = signOAuthState(
@@ -246,7 +295,23 @@ export class ProjectsService {
     );
   }
 
-  private buildBriefPayload(dto: CreateProjectDto): ProjectBriefPayload {
+  private buildBriefPayload(
+    dto: {
+      websiteUrl: string;
+      geo: string[];
+      budgetDaily: number;
+      budgetCurrency?: string;
+      targetCpl?: number;
+      usp: string[];
+      targetAudience: Array<{
+        segment: string;
+        pains?: string[];
+        objections?: string[];
+      }>;
+      globalNegativeKeywords: string[];
+    },
+    primaryPlatform: AdPlatform,
+  ): ProjectBriefPayload {
     return {
       project: {
         website_url: dto.websiteUrl,
@@ -255,7 +320,10 @@ export class ProjectsService {
           daily: dto.budgetDaily,
           currency: dto.budgetCurrency ?? 'RUB',
         },
-        platforms: [dto.primaryPlatform],
+        ...(dto.targetCpl != null && dto.targetCpl > 0
+          ? { target_cpl: dto.targetCpl }
+          : {}),
+        platforms: [primaryPlatform],
       },
       marketing: {
         usp: dto.usp.map((item) => item.trim()).filter(Boolean),
