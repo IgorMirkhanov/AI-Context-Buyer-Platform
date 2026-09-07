@@ -114,6 +114,48 @@ describe('TokenRefreshService', () => {
     service = module.get(TokenRefreshService);
   });
 
+  it('encrypts rotated Google Ads tokens', async () => {
+    prisma.project.findFirst.mockResolvedValue({
+      id: 'p1',
+      organizationId: 'org-a',
+      primaryPlatform: AdPlatform.google_ads,
+    });
+    prisma.adPlatformCredential.findFirst.mockResolvedValue({
+      id: 'cred-g',
+      projectId: 'p1',
+      platform: AdPlatform.google_ads,
+      accessTokenEncrypted: encryptSecret('old-g-access', key),
+      refreshTokenEncrypted: encryptSecret('old-g-refresh', key),
+      expiresAt: new Date('2026-08-27T12:05:00.000Z'),
+      scopes: 'https://www.googleapis.com/auth/adwords',
+      externalAccountId: '1112223333',
+    });
+    google.refreshAccessToken.mockResolvedValue({
+      accessToken: 'new-g-access',
+      refreshToken: 'new-g-refresh',
+      expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+      scopes: 'https://www.googleapis.com/auth/adwords',
+      externalAccountId: '',
+    });
+    await service.refreshProject('org-a', 'p1', { force: true });
+    expect(google.refreshAccessToken).toHaveBeenCalledWith('p1', 'old-g-refresh');
+    expect(yandex.refreshAccessToken).not.toHaveBeenCalled();
+    const update = prisma.adPlatformCredential.update.mock.calls[0][0];
+    expect(update.where).toEqual({
+      projectId_platform: {
+        projectId: 'p1',
+        platform: AdPlatform.google_ads,
+      },
+    });
+    expect(decryptSecret(update.data.accessTokenEncrypted, key)).toBe(
+      'new-g-access',
+    );
+    expect(decryptSecret(update.data.refreshTokenEncrypted, key)).toBe(
+      'new-g-refresh',
+    );
+    expect(update.data.externalAccountId).toBeUndefined();
+  });
+
   it('does not refresh a sibling organization project', async () => {
     prisma.project.findFirst.mockResolvedValue(null);
     await expect(

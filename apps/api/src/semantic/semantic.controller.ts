@@ -58,10 +58,16 @@ export class SemanticController {
     @Req() req: { user: JwtPayload },
     @Param('id', ParseUUIDPipe) id: string,
     @Query('format') format: string | undefined,
+    @Query('commercial') commercial: string | undefined,
     @Res() res: Response,
   ) {
+    const commercialOnly = commercial !== '0' && commercial !== 'false';
     if (format === 'xlsx') {
-      const body = await this.semantic.exportXlsx(req.user.organizationId, id);
+      const body = await this.semantic.exportXlsx(
+        req.user.organizationId,
+        id,
+        { commercialOnly },
+      );
       res.setHeader('Content-Type', 'application/vnd.ms-excel');
       res.setHeader(
         'Content-Disposition',
@@ -70,7 +76,9 @@ export class SemanticController {
       res.send(body);
       return;
     }
-    const csv = await this.semantic.exportCsv(req.user.organizationId, id);
+    const csv = await this.semantic.exportCsv(req.user.organizationId, id, {
+      commercialOnly,
+    });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',

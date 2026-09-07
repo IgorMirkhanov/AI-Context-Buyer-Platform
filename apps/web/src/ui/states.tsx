@@ -4,7 +4,7 @@ import { Button } from "./button";
 export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded-md bg-zinc-200/80 ${className}`}
+      className={`animate-pulse rounded-md bg-[var(--bg-high)] ${className}`}
       aria-hidden
     />
   );
@@ -29,7 +29,7 @@ export function EmptyState({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-zinc-50 px-4 py-6 text-sm">
+    <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--bg)] px-4 py-6 text-sm">
       <p className="font-medium text-[var(--fg)]">{title}</p>
       <p className="mt-1 text-[var(--fg-muted)]">{children}</p>
     </div>

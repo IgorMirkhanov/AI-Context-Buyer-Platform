@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Req,
@@ -14,6 +15,7 @@ import { PortfolioService } from './portfolio.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpsertBriefDto } from './dto/upsert-brief.dto';
 import { SetFavoriteDto } from './dto/set-favorite.dto';
+import { SetPrimaryPlatformDto } from './dto/set-primary-platform.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload';
 import { ProjectAccessGuard } from '../tenancy/project-access.guard';
@@ -67,6 +69,20 @@ export class ProjectsController {
     @Body() dto: UpsertBriefDto,
   ) {
     return this.projects.upsertBrief(req.user.organizationId, id, dto);
+  }
+
+  /** Switch Yandex Direct ↔ Google Ads before OAuth (no credential yet). */
+  @Patch(':id/platform')
+  setPrimaryPlatform(
+    @Req() req: { user: JwtPayload },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetPrimaryPlatformDto,
+  ) {
+    return this.projects.setPrimaryPlatform(
+      req.user.organizationId,
+      id,
+      dto.primaryPlatform,
+    );
   }
 
   @Post(':id/oauth/yandex')

@@ -351,8 +351,13 @@ export class SemanticService {
     return { accepted: pending.map((item) => item.phrase) };
   }
 
-  async exportCsv(organizationId: string, projectId: string): Promise<string> {
+  async exportCsv(
+    organizationId: string,
+    projectId: string,
+    options?: { commercialOnly?: boolean },
+  ): Promise<string> {
     const result = await this.getResult(organizationId, projectId);
+    const commercialOnly = options?.commercialOnly ?? false;
     const lines = [
       [
         'cluster',
@@ -367,6 +372,7 @@ export class SemanticService {
     ];
     for (const cluster of result.clusters) {
       for (const kw of cluster.keywords) {
+        if (commercialOnly && !kw.isCommercial) continue;
         lines.push(
           [
             csv(cluster.name),
@@ -397,8 +403,12 @@ export class SemanticService {
     return lines.join('\n');
   }
 
-  async exportXlsx(organizationId: string, projectId: string): Promise<Buffer> {
-    const csvText = await this.exportCsv(organizationId, projectId);
+  async exportXlsx(
+    organizationId: string,
+    projectId: string,
+    options?: { commercialOnly?: boolean },
+  ): Promise<Buffer> {
+    const csvText = await this.exportCsv(organizationId, projectId, options);
     const rows = csvText.split('\n').map((line) => parseCsvLine(line));
     const cells = rows
       .map(

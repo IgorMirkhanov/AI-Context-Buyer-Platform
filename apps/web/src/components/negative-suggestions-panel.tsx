@@ -30,11 +30,11 @@ export function NegativeSuggestionsPanel({
   }
 
   return (
-    <div className="mb-4 rounded-[var(--radius)] border border-amber-200 bg-amber-50/60 p-4">
-      <h3 className="mb-1 font-medium text-zinc-900">
+    <div className="mb-4 rounded-[var(--radius)] border border-[var(--status-alert-border)] bg-[var(--status-alert-bg)] p-4">
+      <h3 className="mb-1 font-medium text-[var(--fg)]">
         Предложенные минус-слова
       </h3>
-      <p className="mb-3 text-sm text-zinc-600">
+      <p className="mb-3 text-sm text-[var(--fg-muted)]">
         Агент нашёл нецелевые формулировки в собранной семантике. Примите
         минус-слово — оно попадёт в глобальные минусы брифа; отклоните — не
         будет предлагаться снова.
@@ -44,12 +44,12 @@ export function NegativeSuggestionsPanel({
           {pendingItems.map((item) => (
             <li
               key={item.id}
-              className="flex flex-wrap items-start justify-between gap-2 rounded border border-amber-100 bg-white px-3 py-2"
+              className="flex flex-wrap items-start justify-between gap-2 rounded border border-[var(--status-alert-border)] bg-[var(--bg-elevated)] px-3 py-2"
             >
               <div>
-                <p className="font-medium text-zinc-900">{item.phrase}</p>
+                <p className="font-medium text-[var(--fg)]">{item.phrase}</p>
                 {item.reason ? (
-                  <p className="text-xs text-zinc-500">{item.reason}</p>
+                  <p className="text-xs text-[var(--fg-muted)]">{item.reason}</p>
                 ) : null}
               </div>
               {!readOnly ? (
@@ -76,12 +76,12 @@ export function NegativeSuggestionsPanel({
           ))}
         </ul>
       ) : (
-        <p className="mb-3 text-sm text-zinc-500">
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           Нет ожидающих решения — все предложения обработаны.
         </p>
       )}
       {resolvedItems.length > 0 ? (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-[var(--fg-muted)]">
           Обработано:{" "}
           {resolvedItems
             .map(

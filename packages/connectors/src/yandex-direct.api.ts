@@ -25,6 +25,13 @@ export type YandexPerformanceRow = {
   adGroupName?: string;
 };
 
+export type YandexAccountCampaignRow = {
+  externalCampaignId: string;
+  name: string;
+  status: "active" | "paused" | "archived";
+  dailyBudget: number | null;
+};
+
 export interface YandexDirectApi {
   addCampaigns(
     auth: YandexAuth,
@@ -58,6 +65,8 @@ export interface YandexDirectApi {
     auth: YandexAuth,
     range: { from: string; to: string; campaignIds: string[] },
   ): Promise<YandexPerformanceRow[]>;
+  getAccountCampaigns(auth: YandexAuth): Promise<YandexAccountCampaignRow[]>;
+  probeConnection(auth: YandexAuth): Promise<void>;
   getSearchTerms(
     auth: YandexAuth,
     range: { from: string; to: string; campaignIds: string[] },
@@ -267,6 +276,61 @@ export class LiveYandexDirectApi implements YandexDirectApi {
     return parsePerformanceTsv(tsv);
   }
 
+  async getAccountCampaigns(auth: YandexAuth): Promise<YandexAccountCampaignRow[]> {
+    const data = await this.call<{
+      Campaigns?: Array<{
+        Id?: number;
+        Name?: string;
+        Status?: string;
+        State?: string;
+        DailyBudget?: { Amount?: number };
+      }>;
+    }>(
+      auth,
+      "campaigns",
+      "get",
+      {
+        SelectionCriteria: {
+          States: [
+            "ON",
+            "OFF",
+            "SUSPENDED",
+            "ENDED",
+            "CONVERTED",
+            "ARCHIVED",
+          ],
+        },
+        FieldNames: ["Id", "Name", "Status", "State", "DailyBudget"],
+      },
+      "fetchAllAccountCampaigns",
+    );
+    return (data.Campaigns ?? []).map((row) => ({
+      externalCampaignId: String(row.Id ?? ""),
+      name: row.Name?.trim() || `Кампания ${row.Id ?? ""}`,
+      status: mapYandexCampaignState(row.State, row.Status),
+      dailyBudget:
+        row.DailyBudget?.Amount != null
+          ? row.DailyBudget.Amount / 1_000_000
+          : null,
+    }));
+  }
+
+  async probeConnection(auth: YandexAuth): Promise<void> {
+    await this.call(
+      auth,
+      "campaigns",
+      "get",
+      {
+        SelectionCriteria: {
+          States: ["ON", "OFF", "SUSPENDED", "ENDED", "CONVERTED", "ARCHIVED"],
+        },
+        FieldNames: ["Id"],
+        Page: { Limit: 1 },
+      },
+      "verifyConnection",
+    );
+  }
+
   async getSearchTerms(
     auth: YandexAuth,
     range: { from: string; to: string; campaignIds: string[] },
@@ -460,6 +524,21 @@ export class MockYandexDirectApi implements YandexDirectApi {
 
   failAt: string | null = null;
 
+  accountCampaigns: YandexAccountCampaignRow[] = [
+    {
+      externalCampaignId: "555",
+      name: "Платформенная кампания",
+      status: "paused",
+      dailyBudget: 5000,
+    },
+    {
+      externalCampaignId: "9001",
+      name: "Старая архивная",
+      status: "archived",
+      dailyBudget: null,
+    },
+  ];
+
   private take(method: string, payload: unknown): number {
     this.calls.push({ method, payload });
     if (this.failAt === method) {
@@ -583,6 +662,25 @@ export class MockYandexDirectApi implements YandexDirectApi {
     return rows;
   }
 
+  async getAccountCampaigns(auth: YandexAuth): Promise<YandexAccountCampaignRow[]> {
+    requireAuth(auth, "fetchAllAccountCampaigns");
+    this.calls.push({ method: "fetchAllAccountCampaigns", payload: {} });
+    return this.accountCampaigns.map((row) => ({ ...row }));
+  }
+
+  async probeConnection(auth: YandexAuth): Promise<void> {
+    requireAuth(auth, "verifyConnection");
+    this.calls.push({ method: "verifyConnection", payload: {} });
+    if (this.failAt === "verifyConnection") {
+      throw new PlatformApiError(
+        "Invalid OAuth token",
+        "verifyConnection",
+        "error_code 53",
+        false,
+      );
+    }
+  }
+
   async getSearchTerms(
     auth: YandexAuth,
     range: { from: string; to: string; campaignIds: string[] },
@@ -639,6 +737,26 @@ function idsFromAdd(results: YandexAddResult[] | undefined, step: string): numbe
     }
     return item.Id;
   });
+}
+
+export function mapYandexCampaignState(
+  state?: string,
+  status?: string,
+): "active" | "paused" | "archived" {
+  const normalizedState = (state ?? "").toUpperCase();
+  const normalizedStatus = (status ?? "").toUpperCase();
+  if (
+    normalizedState === "ARCHIVED" ||
+    normalizedState === "ENDED" ||
+    normalizedState === "CONVERTED" ||
+    normalizedStatus === "ARCHIVED"
+  ) {
+    return "archived";
+  }
+  if (normalizedState === "ON") {
+    return "active";
+  }
+  return "paused";
 }
 
 export function humanizeDirectError(details: string, step: string): string {

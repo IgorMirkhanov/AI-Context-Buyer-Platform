@@ -1,7 +1,36 @@
 "use client";
 
+import { localizeApiError } from "./api-errors";
+
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+const FETCH_RETRIES = 2;
+const FETCH_RETRY_DELAY_MS = 600;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= FETCH_RETRIES; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      lastError = err;
+      if (attempt < FETCH_RETRIES) {
+        await sleep(FETCH_RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+  }
+  const raw =
+    lastError instanceof Error ? lastError.message : "Failed to fetch";
+  throw new Error(localizeApiError(raw));
+}
 
 const TOKEN_KEY = "cb_access_token";
 
@@ -27,7 +56,7 @@ export async function api<T>(
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const res = await fetchWithRetry(`${API_URL}${path}`, { ...options, headers });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
       message?: string | string[];
@@ -47,7 +76,7 @@ export async function downloadAuthenticated(
   const token = getToken();
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${API_URL}${path}`, { headers });
+  const res = await fetchWithRetry(`${API_URL}${path}`, { headers });
   if (!res.ok) {
     throw new Error(`Download failed: ${res.status}`);
   }

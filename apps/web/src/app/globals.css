@@ -1,45 +1,55 @@
 @import "tailwindcss";
 
-/* Design tokens — AI Context-Buyer Platform
-   Neutral chrome (zinc). Status: draft/archived, review/publishing,
-   paused, active, alert, success, danger, info.
-   Radius 10px, card padding 16px, primary = --accent (white-label).
+/* Design tokens — Stitch dark shell, adapted for AI Context-Buyer.
+   IA and CTAs stay product-native; colors from design/adapted/shell-preview.
 */
 
 :root {
-  --bg: #f4f5f7;
-  --bg-elevated: #ffffff;
-  --fg: #18181b;
-  --fg-muted: #71717a;
-  --border: #e4e4e7;
-  --border-strong: #d4d4d8;
-  --accent: #18181b;
-  --accent-fg: #fafafa;
-  --ring: #a1a1aa;
+  --bg: #0e0e12;
+  --bg-elevated: #1b1b1f;
+  --bg-surface: #131317;
+  --bg-mid: #1f1f23;
+  --bg-high: #2a292e;
+  --bg-muted: #1b1b1f;
+  --bg-hover: #2a292e;
+  --fg: #e4e1e7;
+  --fg-muted: #c7c4d7;
+  --fg-faint: #908fa0;
+  --border: #272732;
+  --border-strong: #464554;
+  --outline: #908fa0;
+  --accent: #8083ff;
+  --accent-fg: #0d0096;
+  --accent-soft: #c0c1ff;
+  --secondary: #4edea3;
+  --ring: #8083ff;
   --radius: 10px;
   --space: 16px;
   --font: var(--font-geist-sans), "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --status-draft-bg: #f4f4f5;
-  --status-draft-fg: #3f3f46;
-  --status-review-bg: #eff6ff;
-  --status-review-fg: #1d4ed8;
-  --status-paused-bg: #fff7ed;
-  --status-paused-fg: #c2410c;
-  --status-active-bg: #ecfdf5;
-  --status-active-fg: #047857;
-  --status-alert-bg: #fffbeb;
-  --status-alert-fg: #b45309;
-  --status-alert-border: #fde68a;
-  --status-success-bg: #ecfdf5;
-  --status-success-fg: #047857;
-  --status-success-border: #a7f3d0;
-  --status-danger-bg: #fef2f2;
-  --status-danger-fg: #b91c1c;
-  --status-danger-border: #fecaca;
-  --status-info-bg: #eff6ff;
-  --status-info-fg: #1d4ed8;
-  --status-info-border: #bfdbfe;
+  --shadow-card: 0 0 0 1px var(--border);
+  --glow-edge: linear-gradient(90deg, rgba(128, 131, 255, 0.35), transparent 70%);
+
+  --status-draft-bg: #2a292e;
+  --status-draft-fg: #c7c4d7;
+  --status-review-bg: rgba(128, 131, 255, 0.15);
+  --status-review-fg: #c0c1ff;
+  --status-paused-bg: rgba(245, 158, 11, 0.12);
+  --status-paused-fg: #fbbf24;
+  --status-active-bg: rgba(78, 222, 163, 0.12);
+  --status-active-fg: #4edea3;
+  --status-alert-bg: rgba(245, 158, 11, 0.12);
+  --status-alert-fg: #fbbf24;
+  --status-alert-border: rgba(245, 158, 11, 0.35);
+  --status-success-bg: rgba(78, 222, 163, 0.12);
+  --status-success-fg: #4edea3;
+  --status-success-border: rgba(78, 222, 163, 0.35);
+  --status-danger-bg: rgba(255, 180, 171, 0.12);
+  --status-danger-fg: #ffb4ab;
+  --status-danger-border: rgba(255, 180, 171, 0.35);
+  --status-info-bg: rgba(128, 131, 255, 0.12);
+  --status-info-fg: #c0c1ff;
+  --status-info-border: rgba(128, 131, 255, 0.3);
 }
 
 @theme inline {
@@ -56,18 +66,30 @@ body {
   font-family: var(--font);
 }
 
+::selection {
+  background: rgba(128, 131, 255, 0.35);
+  color: var(--fg);
+}
+
 .ui-input {
   width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: var(--bg);
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   color: var(--fg);
 }
 .ui-input:focus {
-  outline: 2px solid var(--ring);
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 1px;
+}
+.ui-input::placeholder {
+  color: var(--fg-faint);
+}
+.ui-input option {
+  background: var(--bg-elevated);
+  color: var(--fg);
 }
 
 .ui-table {
@@ -76,17 +98,58 @@ body {
   font-size: 0.875rem;
 }
 .ui-table thead {
-  color: var(--fg-muted);
+  color: var(--fg-faint);
+  background: var(--bg);
+  font-size: 0.6875rem;
+  text-transform: none;
+  letter-spacing: 0.01em;
 }
 .ui-table th,
 .ui-table td {
-  padding: 0.5rem 0.5rem 0.5rem 0;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.ui-table th {
+  font-weight: 500;
 }
 .ui-table tbody tr[data-clickable] {
   cursor: pointer;
 }
 .ui-table tbody tr[data-clickable]:hover {
-  background: #fafafa;
+  background: color-mix(in srgb, var(--bg-mid) 80%, transparent);
+}
+
+.ui-kpi {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  padding: 0.75rem;
+  overflow: hidden;
+}
+.ui-kpi::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--glow-edge);
+  pointer-events: none;
+}
+
+.ui-panel {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.ui-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--glow-edge);
+  pointer-events: none;
 }
 
 .term-hint {
@@ -117,16 +180,26 @@ body {
   width: 16rem;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background: var(--bg-high);
   padding: 0.5rem 0.65rem;
   font-size: 0.75rem;
   font-weight: 400;
   line-height: 1.35;
   color: var(--fg);
-  box-shadow: 0 8px 24px rgba(24, 24, 27, 0.12);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
-.term-hint:hover .term-hint-bubble,
-.term-hint:focus .term-hint-bubble,
-.term-hint:focus-within .term-hint-bubble {
-  display: block;
+@keyframes ui-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+.ui-panel,
+.ui-kpi {
+  animation: ui-fade-up 0.35s ease-out both;
+}
+

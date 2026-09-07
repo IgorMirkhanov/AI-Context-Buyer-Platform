@@ -8,6 +8,12 @@ import { ConfigService } from '@nestjs/config';
 import { AdPlatform, ProjectStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
+import {
+  PlatformConnectionService,
+  resolveConnectionStatus,
+  shouldVerifyConnection,
+  verificationCheckFields,
+} from '../connectors/platform-connection.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpsertBriefDto } from './dto/upsert-brief.dto';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
@@ -22,6 +28,7 @@ import {
   parseTokenEncryptionKey,
 } from '../security/token-encryption';
 import { signOAuthState, verifyOAuthState } from '../security/oauth-state';
+import { ConnectionVerificationFailedError } from './connection-verification.error';
 
 @Injectable()
 export class ProjectsService {
@@ -30,6 +37,7 @@ export class ProjectsService {
     private readonly config: ConfigService,
     private readonly connectors: ConnectorRouter,
     private readonly access: AccessService,
+    private readonly platformConnection: PlatformConnectionService,
   ) {}
 
   listForUser(user: JwtPayload) {
@@ -58,9 +66,17 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
     const [brief] = project.briefs;
-    const credential = project.credentials.find(
+    let credential = project.credentials.find(
       (row) => row.platform === project.primaryPlatform,
     );
+    if (credential) {
+      credential = await this.refreshConnectionVerificationIfDue(
+        project.id,
+        project.primaryPlatform,
+        credential,
+      );
+    }
+    const connectionStatus = resolveConnectionStatus(credential ?? null);
     return {
       id: project.id,
       organizationId: project.organizationId,
@@ -73,16 +89,18 @@ export class ProjectsService {
       brief: (brief?.payloadJson as ProjectBriefPayload | null) ?? null,
       connection: credential
         ? {
-            status: 'connected' as const,
+            status: connectionStatus,
             platform: credential.platform,
             externalAccountId: credential.externalAccountId,
             expiresAt: credential.expiresAt,
+            verificationError: credential.apiVerificationError,
           }
         : {
             status: 'not_connected' as const,
             platform: project.primaryPlatform,
             externalAccountId: null,
             expiresAt: null,
+            verificationError: null,
           },
     };
   }
@@ -183,6 +201,23 @@ export class ProjectsService {
     if (project.primaryPlatform !== AdPlatform.google_ads) {
       throw new BadRequestException('This project uses Yandex Direct');
     }
+    const mock =
+      this.config.get<string>('GOOGLE_ADS_MOCK') === '1' ||
+      this.config.get<string>('GOOGLE_ADS_MOCK') === 'true';
+    if (!mock) {
+      const clientId = this.config.get<string>('GOOGLE_ADS_CLIENT_ID')?.trim();
+      const clientSecret = this.config
+        .get<string>('GOOGLE_ADS_CLIENT_SECRET')
+        ?.trim();
+      const developerToken = this.config
+        .get<string>('GOOGLE_ADS_DEVELOPER_TOKEN')
+        ?.trim();
+      if (!clientId || !clientSecret || !developerToken) {
+        throw new ServiceUnavailableException(
+          'Google Ads OAuth is not configured (need GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_DEVELOPER_TOKEN)',
+        );
+      }
+    }
     return this.startOAuth(
       project,
       'GOOGLE_ADS_CLIENT_ID',
@@ -206,6 +241,13 @@ export class ProjectsService {
     const refreshTokenEncrypted = credentials.refreshToken
       ? encryptSecret(credentials.refreshToken, key)
       : null;
+    const verification = await connector.verifyConnection(project.id, {
+      accessToken: credentials.accessToken,
+      clientLogin: credentials.externalAccountId,
+      projectId: project.id,
+    });
+    const checkedAt = new Date();
+    const verificationFields = verificationCheckFields(verification, checkedAt);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.adPlatformCredential.upsert({
@@ -221,6 +263,7 @@ export class ProjectsService {
           expiresAt: credentials.expiresAt,
           scopes: credentials.scopes,
           externalAccountId: credentials.externalAccountId,
+          ...verificationFields,
         },
         create: {
           projectId: project.id,
@@ -230,13 +273,23 @@ export class ProjectsService {
           expiresAt: credentials.expiresAt,
           scopes: credentials.scopes,
           externalAccountId: credentials.externalAccountId,
+          ...verificationFields,
         },
       });
-      await tx.project.update({
-        where: { id: project.id },
-        data: { status: ProjectStatus.active },
-      });
+      if (verification.ok) {
+        await tx.project.update({
+          where: { id: project.id },
+          data: { status: ProjectStatus.active },
+        });
+      }
     });
+
+    if (!verification.ok) {
+      throw new ConnectionVerificationFailedError(
+        project.id,
+        verification.reason,
+      );
+    }
 
     return { projectId: project.id };
   }
@@ -253,6 +306,59 @@ export class ProjectsService {
       });
     });
     return { ok: true };
+  }
+
+  /**
+   * Switch Yandex Direct ↔ Google Ads before OAuth.
+   * Blocked while a credential for the current primary platform exists —
+   * disconnect first.
+   */
+  async setPrimaryPlatform(
+    organizationId: string,
+    projectId: string,
+    primaryPlatform: AdPlatform,
+  ) {
+    const project = await this.requireProject(organizationId, projectId);
+    if (project.primaryPlatform === primaryPlatform) {
+      return this.getForOrganization(organizationId, projectId);
+    }
+    const existing = await this.prisma.adPlatformCredential.findFirst({
+      where: { projectId: project.id, platform: project.primaryPlatform },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'Сначала отключите текущий кабинет, затем смените платформу',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id: project.id },
+        data: { primaryPlatform },
+      });
+      const [brief] = await tx.projectBrief.findMany({
+        where: { projectId: project.id },
+        orderBy: { version: 'desc' },
+        take: 1,
+      });
+      if (brief) {
+        const payload = brief.payloadJson as ProjectBriefPayload;
+        const next: ProjectBriefPayload = {
+          ...payload,
+          project: {
+            ...payload.project,
+            platforms: [primaryPlatform],
+          },
+        };
+        await tx.projectBrief.update({
+          where: { id: brief.id },
+          data: { payloadJson: next },
+        });
+      }
+    });
+
+    return this.getForOrganization(organizationId, projectId);
   }
 
   private startOAuth(
@@ -275,6 +381,38 @@ export class ProjectsService {
     return this.connectors
       .forPlatform(project.primaryPlatform)
       .buildAuthorizeUrl(state);
+  }
+
+  private async refreshConnectionVerificationIfDue<
+    T extends {
+      accessTokenEncrypted: string;
+      externalAccountId: string | null;
+      apiVerifiedAt: Date | null;
+      apiVerificationError: string | null;
+    },
+  >(projectId: string, platform: AdPlatform, credential: T, now = new Date()) {
+    if (
+      !shouldVerifyConnection(
+        credential.apiVerifiedAt,
+        now,
+        this.platformConnection.throttleMs(),
+      )
+    ) {
+      return credential;
+    }
+    const verification =
+      await this.platformConnection.verifyProjectConnection(
+        projectId,
+        platform,
+        credential,
+      );
+    const fields = verificationCheckFields(verification, now);
+    return this.prisma.adPlatformCredential.update({
+      where: {
+        projectId_platform: { projectId, platform },
+      },
+      data: fields,
+    });
   }
 
   private async requireProject(organizationId: string, id: string) {

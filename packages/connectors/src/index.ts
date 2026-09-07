@@ -2,6 +2,8 @@ export {
   NotImplementedError,
   PlatformApiError,
   isPlatformRateLimitError,
+  isConnectionVerificationError,
+  connectionVerificationMessage,
   assertStageNotReached,
 } from "./types";
 export { tokenNeedsRefresh, DEFAULT_TOKEN_REFRESH_SKEW_MS } from "./oauth-refresh";
@@ -13,6 +15,9 @@ export {
 } from "./project-rate-limit";
 export type {
   AdPlatformConnector,
+  AccountCampaignSummary,
+  AccountCampaignStatus,
+  ConnectionVerificationResult,
   Credentials,
   KeywordIdea,
   OAuthUrl,
@@ -24,11 +29,13 @@ export type {
 
 export {
   MockKeywordIdeasProvider,
+  seedHasCommercialModifier,
 } from "./keyword-ideas";
 export type { KeywordIdeasProvider } from "./keyword-ideas";
 
 export {
   YandexDirectConnector,
+  YANDEX_DEFAULT_OAUTH_SCOPE,
   createYandexOAuthClient,
   createMockYandexOAuthClient,
 } from "./yandex-direct.connector";
@@ -42,14 +49,16 @@ export {
   LiveYandexDirectApi,
   MockYandexDirectApi,
   humanizeDirectError,
+  mapYandexCampaignState,
   parsePerformanceTsv,
 } from "./yandex-direct.api";
-export type { YandexDirectApi, YandexAuth } from "./yandex-direct.api";
+export type { YandexDirectApi, YandexAuth, YandexAccountCampaignRow } from "./yandex-direct.api";
 export { toYandexMoney, yandexRegionIds } from "./yandex-geo";
 
 export {
   GoogleAdsConnector,
   createGoogleOAuthClient,
+  createMockGoogleOAuthClient,
   GOOGLE_ADS_SCOPE,
 } from "./google-ads.connector";
 export type {

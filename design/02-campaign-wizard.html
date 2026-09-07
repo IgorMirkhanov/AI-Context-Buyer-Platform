@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NeuralAd Engine - Campaign Setup Wizard</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Geist, Inter, JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary-fixed-dim": "#d0bcff",
+            "on-tertiary-fixed": "#23005c",
+            "secondary-fixed-dim": "#4edea3",
+            "surface-variant": "#353439",
+            "on-primary": "#1000a9",
+            "on-primary-fixed": "#07006c",
+            "primary-container": "#8083ff",
+            "error": "#ffb4ab",
+            "inverse-on-surface": "#303034",
+            "surface-container-high": "#2a292e",
+            "tertiary-fixed": "#e9ddff",
+            "surface-dim": "#131317",
+            "primary": "#c0c1ff",
+            "outline-variant": "#464554",
+            "on-secondary-fixed-variant": "#005236",
+            "surface-container": "#1f1f23",
+            "on-primary-fixed-variant": "#2f2ebe",
+            "inverse-surface": "#e4e1e7",
+            "tertiary": "#d0bcff",
+            "inverse-primary": "#494bd6",
+            "on-error-container": "#ffdad6",
+            "on-secondary-fixed": "#002113",
+            "secondary-container": "#00a572",
+            "background": "#131317",
+            "on-tertiary-container": "#340080",
+            "surface-container-low": "#1b1b1f",
+            "surface-container-highest": "#353439",
+            "on-secondary": "#003824",
+            "surface": "#131317",
+            "surface-bright": "#39393d",
+            "on-background": "#e4e1e7",
+            "secondary-fixed": "#6ffbbe",
+            "surface-container-lowest": "#0e0e12",
+            "on-tertiary-fixed-variant": "#5516be",
+            "outline": "#908fa0",
+            "error-container": "#93000a",
+            "on-tertiary": "#3c0091",
+            "secondary": "#4edea3",
+            "tertiary-container": "#a078ff",
+            "surface-tint": "#c0c1ff",
+            "on-surface": "#e4e1e7",
+            "on-primary-container": "#0d0096",
+            "on-secondary-container": "#00311f",
+            "primary-fixed-dim": "#c0c1ff",
+            "on-surface-variant": "#c7c4d7",
+            "on-error": "#690005",
+            "primary-fixed": "#e1e0ff"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "spacing": {
+            "space-md": "1rem",
+            "space-2xs": "0.25rem",
+            "gutter-mobile": "0.75rem",
+            "space-sm": "0.75rem",
+            "max-content-width": "88rem",
+            "space-2xl": "3rem",
+            "space-xl": "2rem",
+            "sidebar-collapsed": "3.5rem",
+            "space-xs": "0.5rem",
+            "space-3xs": "0.125rem",
+            "gutter-desktop": "1rem",
+            "sidebar-width": "15rem",
+            "space-lg": "1.5rem"
+          },
+          "fontFamily": {
+            "body-lg": ["Inter"],
+            "mono-sm": ["JetBrains Mono"],
+            "headline-lg": ["Geist"],
+            "label-sm": ["Inter"],
+            "headline-md": ["Geist"],
+            "mono-badge": ["JetBrains Mono"],
+            "body-sm": ["Inter"],
+            "label-md": ["Inter"],
+            "body-md": ["Inter"],
+            "headline-xl-mobile": ["Geist"],
+            "headline-xl": ["Geist"],
+            "mono-md": ["JetBrains Mono"]
+          },
+          "fontSize": {
+            "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "mono-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0", "fontWeight": "400" }],
+            "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.025em", "fontWeight": "600" }],
+            "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "headline-md": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "500" }],
+            "mono-badge": ["10px", { "lineHeight": "12px", "letterSpacing": "0.04em", "fontWeight": "500" }],
+            "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0", "fontWeight": "400" }],
+            "label-md": ["13px", { "lineHeight": "16px", "letterSpacing": "-0.005em", "fontWeight": "500" }],
+            "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "400" }],
+            "headline-xl-mobile": ["28px", { "lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "headline-xl": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.03em", "fontWeight": "600" }],
+            "mono-md": ["12px", { "lineHeight": "16px", "letterSpacing": "-0.01em", "fontWeight": "400" }]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      font-size: 16px;
+      line-height: 1;
+    }
+    /* Custom range slider thumb styling */
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 14px;
+      width: 14px;
+      border-radius: 2px;
+      background: #c0c1ff;
+      cursor: pointer;
+      border: 1px solid #131317;
+      box-shadow: 0 0 8px rgba(128, 131, 255, 0.6);
+    }
+    input[type=range]::-moz-range-thumb {
+      height: 14px;
+      width: 14px;
+      border-radius: 2px;
+      background: #c0c1ff;
+      cursor: pointer;
+      border: 1px solid #131317;
+      box-shadow: 0 0 8px rgba(128, 131, 255, 0.6);
+    }
+  </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface antialiased overflow-x-hidden min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- ==================== SHARED COMPONENT: SideNavBar ==================== -->
+<aside class="flex flex-col justify-between h-full p-space-sm w-sidebar-width fixed left-0 top-0 z-40 bg-surface-container-low dark:bg-surface-container-low border-r border-outline-variant dark:border-outline-variant">
+<!-- Header Workspace Info -->
+<div>
+<div class="flex items-center gap-space-xs pb-space-sm border-b border-outline-variant mb-space-sm">
+<div class="w-7 h-7 rounded bg-primary-container flex items-center justify-center text-on-primary-container font-headline-md font-semibold text-label-md">
+          N
+        </div>
+<div class="flex flex-col overflow-hidden">
+<span class="text-headline-md font-headline-md font-semibold text-on-surface dark:text-on-surface tracking-tight truncate">NeuralAd Engine</span>
+<span class="text-mono-sm font-mono-sm text-outline truncate">Enterprise Tier</span>
+</div>
+</div>
+<!-- Navigation Tabs (JSON items) -->
+<nav class="flex flex-col gap-1">
+<!-- Campaigns: Active Tab -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs bg-surface-container-high dark:bg-surface-container-high text-on-surface dark:text-on-surface border-l-2 border-primary-container dark:border-primary-container rounded-DEFAULT cursor-pointer active:scale-98 transition-all duration-100 ease-out" href="#">
+<span class="material-symbols-outlined text-primary" data-icon="campaign">campaign</span>
+<span class="text-label-md font-label-md">Campaigns</span>
+</a>
+<!-- Creative AI Engine -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant dark:text-on-surface-variant rounded-DEFAULT hover:bg-surface-container dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+<span class="text-label-md font-label-md">Creative AI Engine</span>
+</a>
+<!-- Audiences -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant dark:text-on-surface-variant rounded-DEFAULT hover:bg-surface-container dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="groups">groups</span>
+<span class="text-label-md font-label-md">Audiences</span>
+</a>
+<!-- Analytics -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant dark:text-on-surface-variant rounded-DEFAULT hover:bg-surface-container dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="text-label-md font-label-md">Analytics</span>
+</a>
+<!-- Spend & Billing -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant dark:text-on-surface-variant rounded-DEFAULT hover:bg-surface-container dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="credit_card">credit_card</span>
+<span class="text-label-md font-label-md">Spend &amp; Billing</span>
+</a>
+<!-- API & Webhooks -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant dark:text-on-surface-variant rounded-DEFAULT hover:bg-surface-container dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+<span class="text-label-md font-label-md">API &amp; Webhooks</span>
+</a>
+<!-- Settings -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant dark:text-on-surface-variant rounded-DEFAULT hover:bg-surface-container dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-label-md font-label-md">Settings</span>
+</a>
+</nav>
+</div>
+<!-- SideNav Bottom Anchor -->
+<div class="flex flex-col gap-space-xs pt-space-xs border-t border-outline-variant">
+<button class="w-full flex items-center justify-center gap-space-xs bg-surface-container hover:bg-surface-container-high text-on-surface px-space-sm py-1.5 rounded-DEFAULT text-label-sm font-label-sm border border-outline-variant hover:border-outline transition-colors">
+<span class="material-symbols-outlined text-primary" data-icon="rocket_launch">rocket_launch</span>
+<span>Deploy Variant</span>
+</button>
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="text-label-sm font-label-sm">Docs &amp; Status</span>
+</a>
+</div>
+</aside>
+<!-- ==================== SHARED COMPONENT: TopNavBar ==================== -->
+<header class="flex justify-between items-center w-[calc(100%-15rem)] px-space-md h-12 sticky top-0 z-30 ml-sidebar-width bg-surface dark:bg-surface border-b border-outline-variant dark:border-outline-variant">
+<!-- Search Bar & Context Navigation -->
+<div class="flex items-center gap-space-md">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-2 text-outline" data-icon="search">search</span>
+<input class="h-8 pl-7 pr-12 w-64 bg-surface-container-lowest border border-outline-variant rounded-DEFAULT text-body-md font-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-0 focus:outline-none transition-all" placeholder="Search experiments, variants, models..." type="text"/>
+<span class="absolute right-2 text-mono-sm font-mono-sm text-outline border border-outline-variant px-1 rounded bg-surface-container-low">вЊK</span>
+</div>
+<nav class="hidden lg:flex items-center gap-space-md">
+<a class="text-on-surface dark:text-on-surface font-medium border-b border-primary dark:border-primary pb-1 text-label-sm font-label-sm" href="#">Overview</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:text-on-surface dark:hover:text-on-surface pb-1 text-label-sm font-label-sm transition-colors" href="#">Live Feed</a>
+<a class="text-on-surface-variant dark:text-on-surface-variant hover:text-on-surface dark:hover:text-on-surface pb-1 text-label-sm font-label-sm transition-colors" href="#">System Health</a>
+</nav>
+</div>
+<!-- Trailing Action Controls -->
+<div class="flex items-center gap-space-xs">
+<button class="h-8 px-space-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant text-on-surface rounded-DEFAULT text-label-sm font-label-sm flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-outline" data-icon="calendar_today">calendar_today</span>
+<span>Past 30 Days</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center text-outline hover:text-on-surface hover:bg-surface-container rounded-DEFAULT transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center text-outline hover:text-on-surface hover:bg-surface-container rounded-DEFAULT transition-colors">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+</button>
+<div class="h-4 w-px bg-outline-variant mx-1"></div>
+<!-- User Avatar Context -->
+<div class="flex items-center gap-2 pl-1 cursor-pointer">
+<div class="w-7 h-7 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-label-sm font-label-sm font-semibold text-primary">
+          AD
+        </div>
+</div>
+</div>
+</header>
+<!-- ==================== MAIN WORKSPACE CANVAS ==================== -->
+<main class="ml-sidebar-width w-[calc(100%-15rem)] min-h-[calc(100vh-3rem)] pb-24 px-space-xl pt-space-lg">
+<!-- SUBHEADER / WIZARD BREADCRUMB CONTEXT -->
+<div class="flex flex-col md:flex-row md:items-center justify-between pb-space-md border-b border-outline-variant gap-4">
+<div>
+<div class="flex items-center gap-2 text-mono-sm font-mono-sm text-outline mb-1">
+<span>CAMPAIGNS</span>
+<span>/</span>
+<span class="text-primary">WIZARD-AUTO-782</span>
+<span class="h-1.5 w-1.5 rounded-full bg-secondary"></span>
+<span class="text-secondary font-mono-badge">DIRICHLET-OPTIMIZER ACTIVE</span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight">Deploy Autonomous Campaign Wizard</h1>
+</div>
+<div class="flex items-center gap-2">
+<span class="px-2 py-1 bg-surface-container-high border border-outline-variant text-mono-sm font-mono-sm text-outline rounded">
+          Session ID: <span class="text-on-surface font-mono-sm">0x92f...c31</span>
+</span>
+<button class="h-8 px-space-sm bg-surface-container border border-outline-variant hover:border-outline text-outline hover:text-on-surface text-label-sm font-label-sm rounded flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+          Presets
+        </button>
+</div>
+</div>
+<!-- MULTI-STEP STEPPER HEADER -->
+<div class="my-space-lg bg-surface-container-low border border-outline-variant rounded-xl p-space-sm">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-2">
+<!-- Step 1: Completed -->
+<div class="flex items-center gap-3 p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+<div class="w-6 h-6 rounded-full bg-secondary/15 border border-secondary/40 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-sm font-bold" data-icon="check">check</span>
+</div>
+<div class="flex flex-col">
+<span class="text-mono-badge font-mono-badge text-outline">STEP 01</span>
+<span class="text-label-sm font-label-sm text-on-surface">Objective &amp; Channels</span>
+</div>
+</div>
+<!-- Step 2: Completed -->
+<div class="flex items-center gap-3 p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/40">
+<div class="w-6 h-6 rounded-full bg-secondary/15 border border-secondary/40 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-sm font-bold" data-icon="check">check</span>
+</div>
+<div class="flex flex-col">
+<span class="text-mono-badge font-mono-badge text-outline">STEP 02</span>
+<span class="text-label-sm font-label-sm text-on-surface">Multi-Armed Bandit Budget</span>
+</div>
+</div>
+<!-- Step 3: ACTIVE STEP -->
+<div class="relative flex items-center gap-3 p-2 rounded bg-surface-container-high border border-primary/60 shadow-[0_0_15px_-3px_rgba(128,131,255,0.2)]">
+<div class="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-mono-sm font-semibold">
+            3
+          </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="text-mono-badge font-mono-badge text-primary">CURRENT PHASE</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+</div>
+<span class="text-label-sm font-label-sm font-medium text-on-surface">Creative AI &amp; Variant Allocation</span>
+</div>
+<div class="absolute -top-2 right-2 px-1.5 py-0.2 bg-primary text-on-primary text-mono-badge font-mono-badge rounded">
+            EDITING
+          </div>
+</div>
+<!-- Step 4: Upcoming -->
+<div class="flex items-center gap-3 p-2 rounded bg-surface-container-lowest/30 border border-outline-variant/30 opacity-60">
+<div class="w-6 h-6 rounded-full bg-surface-container-highest border border-outline-variant flex items-center justify-center text-outline font-mono-sm">
+            4
+          </div>
+<div class="flex flex-col">
+<span class="text-mono-badge font-mono-badge text-outline">STEP 04</span>
+<span class="text-label-sm font-label-sm text-outline">Autonomous Safeguards &amp; Review</span>
+</div>
+</div>
+</div>
+</div>
+<!-- ==================== STEP 3 ACTIVE CONFIGURATION CANVAS ==================== -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
+<!-- LEFT 8 COLS: CONFIGURATION MATRICES -->
+<div class="xl:col-span-8 flex flex-col gap-space-lg">
+<!-- SECTION A: CHANNEL MULTI-SELECT & DIRICHLET ALLOCATION -->
+<section class="bg-surface-container-low border border-outline-variant rounded-xl p-space-md relative overflow-hidden">
+<div class="flex items-center justify-between pb-space-sm border-b border-outline-variant mb-space-sm">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="hub">hub</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Channel Multi-Select &amp; Real-Time Dirichlet Weights</h2>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-mono-badge font-mono-badge text-secondary bg-secondary/10 px-2 py-0.5 border border-secondary/20 rounded">
+                TOTAL: 100% BALANCED
+              </span>
+</div>
+</div>
+<p class="text-body-sm font-body-sm text-outline mb-space-md">
+            Weights continuously auto-rebalance through Dirichlet multi-arm bandit priors based on 4-hour real-time CAC variance across target networks.
+          </p>
+<!-- Channels Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+<!-- Channel 1: Meta Advantage+ -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant hover:border-outline transition-all">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-primary"></div>
+<span class="text-label-md font-label-md text-on-surface">Meta Adv+ Portfolio</span>
+</div>
+<span class="text-mono-md font-mono-md text-primary font-medium">42.0%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mb-2">
+<div class="bg-primary h-full rounded-full" style="width: 42%;"></div>
+</div>
+<div class="flex justify-between items-center text-mono-sm font-mono-sm text-outline">
+<span>Priors: О±=8.4</span>
+<span class="text-secondary flex items-center gap-0.5">
+<span class="material-symbols-outlined text-xs" data-icon="trending_up">trending_up</span> +3.8% Yield
+                </span>
+</div>
+</div>
+<!-- Channel 2: Google Performance Max -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant hover:border-outline transition-all">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-tertiary"></div>
+<span class="text-label-md font-label-md text-on-surface">Google PMax Neural</span>
+</div>
+<span class="text-mono-md font-mono-md text-tertiary font-medium">33.5%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mb-2">
+<div class="bg-tertiary h-full rounded-full" style="width: 33.5%;"></div>
+</div>
+<div class="flex justify-between items-center text-mono-sm font-mono-sm text-outline">
+<span>Priors: О±=6.7</span>
+<span class="text-secondary flex items-center gap-0.5">
+<span class="material-symbols-outlined text-xs" data-icon="trending_up">trending_up</span> +1.4% Yield
+                </span>
+</div>
+</div>
+<!-- Channel 3: TikTok Pulse Core -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant hover:border-outline transition-all">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-secondary"></div>
+<span class="text-label-md font-label-md text-on-surface">TikTok Pulse Stream</span>
+</div>
+<span class="text-mono-md font-mono-md text-secondary font-medium">16.5%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mb-2">
+<div class="bg-secondary h-full rounded-full" style="width: 16.5%;"></div>
+</div>
+<div class="flex justify-between items-center text-mono-sm font-mono-sm text-outline">
+<span>Priors: О±=3.3</span>
+<span class="text-outline">Neutral Baseline</span>
+</div>
+</div>
+<!-- Channel 4: LinkedIn & X Precision -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant hover:border-outline transition-all">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-outline"></div>
+<span class="text-label-md font-label-md text-on-surface">LinkedIn / X Enterprise</span>
+</div>
+<span class="text-mono-md font-mono-md text-outline font-medium">8.0%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden mb-2">
+<div class="bg-outline h-full rounded-full" style="width: 8%;"></div>
+</div>
+<div class="flex justify-between items-center text-mono-sm font-mono-sm text-outline">
+<span>Priors: О±=1.6</span>
+<span class="text-error flex items-center gap-0.5">
+<span class="material-symbols-outlined text-xs" data-icon="trending_down">trending_down</span> Capped
+                </span>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION B: DYNAMIC VARIANT POOL SELECTOR -->
+<section class="bg-surface-container-low border border-outline-variant rounded-xl p-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between pb-space-sm border-b border-outline-variant mb-space-sm gap-2">
+<div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="auto_awesome">auto_awesome</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Creative AI Engine Variant Pool</h2>
+</div>
+<p class="text-body-sm font-body-sm text-outline">
+                3 active generative variants selected for initial Thompson-sampling exploitation.
+              </p>
+</div>
+<div class="flex items-center gap-2">
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant rounded text-mono-sm font-mono-sm text-on-surface flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="refresh">refresh</span>
+                Synthesize New
+              </button>
+</div>
+</div>
+<!-- Variants Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
+<!-- Variant Card 1 -->
+<div class="bg-surface-container rounded-lg border border-primary/50 overflow-hidden flex flex-col justify-between">
+<div>
+<div class="relative h-28 w-full bg-surface-container-high border-b border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A dark-mode cyberpunk interface banner showing synthetic AI marketing charts, illuminated in neon indigo and obsidian tones with sleek data graphs." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDs1QFw77eI_S6VYl3kpEjvKm_g95WXxWLC-tUQz8fORIdAVSD2LIrUdXU7mrcCeJWcfZQ8x_3WwkAF0q2Hz_S-jZPK09jJgjJCQzwWp_oL42UxnIbUbYhImxxF8CCRkDaHjzrC32lvpCwoMU4e0LI0ECw1bjjYq-_8MnVf8o_-Xs55u8zuXDfhkgOc_E4H94VmAk0hFcKjmglqZOsJHshzSQ7UNTePNFgrafiTBrjhf-LWXDGYQkyVnQ"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-surface-container-lowest/80 backdrop-blur-sm border border-outline-variant text-mono-badge font-mono-badge text-primary rounded">
+                    VAR-01-SYNTH
+                  </div>
+<div class="absolute top-2 right-2 px-1.5 py-0.5 bg-secondary/20 border border-secondary/40 text-mono-badge font-mono-badge text-secondary rounded flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> 94.2 SCORE
+                  </div>
+</div>
+<div class="p-space-sm">
+<span class="text-mono-badge font-mono-badge text-outline uppercase block mb-1">Headline Hook</span>
+<p class="text-body-sm font-body-sm text-on-surface line-clamp-2 mb-2 font-medium">
+                    "Cut Autonomous Ad Spend Leakage by 48% with Continuous Neural Sampling."
+                  </p>
+<div class="flex flex-wrap gap-1 mb-2">
+<span class="px-1.5 py-0.5 bg-surface-container-highest text-mono-badge font-mono-badge text-outline rounded">B2B SaaS</span>
+<span class="px-1.5 py-0.5 bg-surface-container-highest text-mono-badge font-mono-badge text-outline rounded">High-Intent</span>
+</div>
+</div>
+</div>
+<div class="p-space-sm pt-0 border-t border-outline-variant/40 mt-1 flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline">Sim. CTR: <span class="text-secondary font-mono-sm">3.42%</span></span>
+<span class="text-mono-sm font-mono-sm text-outline">Dirichlet: <span class="text-on-surface font-mono-sm">45% pool</span></span>
+</div>
+</div>
+<!-- Variant Card 2 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant hover:border-outline overflow-hidden flex flex-col justify-between transition-colors">
+<div>
+<div class="relative h-28 w-full bg-surface-container-high border-b border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="An abstract high-tech visual of glowing geometric nodes and vector wireframes against a deep matte charcoal backdrop with electric violet radiance." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZXZyehqIDI56svzXX8hXam_rKayzN87NSdy-rfEmm0-RpDTWZGSEzctnpU7DJjdnBcY4weNJBb_dNJGZ6Xt6_WxSRQYCOwUWWrgMzujEZrcyIHlSZuH-tdHF4e255Fm9H2R1fp9IRGOaaZRig75B8BOB8rYEm7bo0NfuVynwhOWLMlx5pOFdszSn-dc8Gt4l1iQGWZzRFlTTGdRzPqhAH_-9sAH0mJZk_PTC5giSdS0T2uy_Jjc3DJw"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-surface-container-lowest/80 backdrop-blur-sm border border-outline-variant text-mono-badge font-mono-badge text-outline rounded">
+                    VAR-02-NEURAL
+                  </div>
+<div class="absolute top-2 right-2 px-1.5 py-0.5 bg-primary/20 border border-primary/40 text-mono-badge font-mono-badge text-primary rounded flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> 89.6 SCORE
+                  </div>
+</div>
+<div class="p-space-sm">
+<span class="text-mono-badge font-mono-badge text-outline uppercase block mb-1">Headline Hook</span>
+<p class="text-body-sm font-body-sm text-on-surface line-clamp-2 mb-2 font-medium">
+                    "Stop Guessing Bid Vectors. Let Machine Intelligence Calibrate Real-Time ROAS."
+                  </p>
+<div class="flex flex-wrap gap-1 mb-2">
+<span class="px-1.5 py-0.5 bg-surface-container-highest text-mono-badge font-mono-badge text-outline rounded">Quant Finance</span>
+<span class="px-1.5 py-0.5 bg-surface-container-highest text-mono-badge font-mono-badge text-outline rounded">Direct CTA</span>
+</div>
+</div>
+</div>
+<div class="p-space-sm pt-0 border-t border-outline-variant/40 mt-1 flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline">Sim. CTR: <span class="text-secondary font-mono-sm">2.91%</span></span>
+<span class="text-mono-sm font-mono-sm text-outline">Dirichlet: <span class="text-on-surface font-mono-sm">35% pool</span></span>
+</div>
+</div>
+<!-- Variant Card 3 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant hover:border-outline overflow-hidden flex flex-col justify-between transition-colors">
+<div>
+<div class="relative h-28 w-full bg-surface-container-high border-b border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Minimalist monochromatic dark studio rendering of high-density typography and glass prism reflections with sharp studio edge illumination." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMkKgSy8R2UXURHDsVxzOKOBsozBEXrGiIjS0CJqsZksXWEAm6BMyvjZOg9OYnBNc4p6yzwMx4G55TrcAr1I-DOjXcPqSwvT5DETSyLf5ZrjUj2MwjrgSPCmip1XKHczFc_ckumqVG53lbp83gBINEMd_Q4-FEMgw4YLFLWQVZMgx-7d9auDbBMKIgtpKQTZ7UAsC_XmW1SKOK4mrqTCtuwDcIhztTFSymzF7p_dL2v8_xwXOP3zFfXw"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-surface-container-lowest/80 backdrop-blur-sm border border-outline-variant text-mono-badge font-mono-badge text-outline rounded">
+                    VAR-03-MINIMAL
+                  </div>
+<div class="absolute top-2 right-2 px-1.5 py-0.5 bg-outline/20 border border-outline/40 text-mono-badge font-mono-badge text-outline rounded flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> 82.1 SCORE
+                  </div>
+</div>
+<div class="p-space-sm">
+<span class="text-mono-badge font-mono-badge text-outline uppercase block mb-1">Headline Hook</span>
+<p class="text-body-sm font-body-sm text-on-surface line-clamp-2 mb-2 font-medium">
+                    "Precision Campaign Orchestration Built Specifically for Modern Growth Engineers."
+                  </p>
+<div class="flex flex-wrap gap-1 mb-2">
+<span class="px-1.5 py-0.5 bg-surface-container-highest text-mono-badge font-mono-badge text-outline rounded">Developer</span>
+<span class="px-1.5 py-0.5 bg-surface-container-highest text-mono-badge font-mono-badge text-outline rounded">A/B Explore</span>
+</div>
+</div>
+</div>
+<div class="p-space-sm pt-0 border-t border-outline-variant/40 mt-1 flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline">Sim. CTR: <span class="text-secondary font-mono-sm">2.45%</span></span>
+<span class="text-mono-sm font-mono-sm text-outline">Dirichlet: <span class="text-on-surface font-mono-sm">20% pool</span></span>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION C: AUTONOMOUS STEERING CONTROLS -->
+<section class="bg-surface-container-low border border-outline-variant rounded-xl p-space-md">
+<div class="flex items-center gap-2 pb-space-sm border-b border-outline-variant mb-space-md">
+<span class="material-symbols-outlined text-primary" data-icon="tune">tune</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Autonomous Steering Parameters</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md">
+<!-- Steering Control 1: Exploration vs Exploitation -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant">
+<div class="flex justify-between items-center mb-1">
+<label class="text-label-md font-label-md text-on-surface">Оµ-Greedy Balance</label>
+<span class="text-mono-badge font-mono-badge text-primary bg-primary/10 px-1.5 py-0.5 rounded">Оµ = 0.18</span>
+</div>
+<p class="text-mono-sm font-mono-sm text-outline mb-3">82% Exploit Top Performers / 18% Cold Exploration</p>
+<input class="w-full h-1.5 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" max="100" min="0" type="range" value="18"/>
+<div class="flex justify-between text-mono-sm font-mono-sm text-outline mt-2">
+<span>Conservative (0.05)</span>
+<span>Hyper-Dynamic (0.40)</span>
+</div>
+</div>
+<!-- Steering Control 2: Max Daily Shift Cap -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant">
+<div class="flex justify-between items-center mb-1">
+<label class="text-label-md font-label-md text-on-surface">Velocity Throttling</label>
+<span class="text-mono-badge font-mono-badge text-secondary bg-secondary/10 px-1.5 py-0.5 rounded">ACTIVE</span>
+</div>
+<p class="text-mono-sm font-mono-sm text-outline mb-2">Max allowed shift per hour across channels</p>
+<div class="relative flex items-center mt-2">
+<span class="absolute left-2.5 text-mono-sm font-mono-sm text-outline">$</span>
+<input class="h-8 pl-6 pr-12 w-full bg-surface-container-lowest border border-outline-variant rounded text-mono-sm font-mono-sm text-on-surface focus:border-primary focus:ring-0" type="text" value="1,500"/>
+<span class="absolute right-2 text-mono-sm font-mono-sm text-outline">/ hr</span>
+</div>
+<span class="text-mono-sm font-mono-sm text-outline mt-1.5 block">Prevents sudden algorithmic liquidity drains.</span>
+</div>
+<!-- Steering Control 3: Auto-pause CTR floor -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant">
+<div class="flex justify-between items-center mb-1">
+<label class="text-label-md font-label-md text-on-surface">Auto-Pause Floor</label>
+<span class="text-mono-badge font-mono-badge text-error bg-error/10 px-1.5 py-0.5 rounded">SAFETY</span>
+</div>
+<p class="text-mono-sm font-mono-sm text-outline mb-2">De-allocate if rolling CTR drops below</p>
+<div class="relative flex items-center mt-2">
+<input class="h-8 pl-3 pr-8 w-full bg-surface-container-lowest border border-outline-variant rounded text-mono-sm font-mono-sm text-on-surface focus:border-primary focus:ring-0" type="text" value="1.85"/>
+<span class="absolute right-3 text-mono-sm font-mono-sm text-outline">%</span>
+</div>
+<span class="text-mono-sm font-mono-sm text-outline mt-1.5 block">Auto-replaces with queue standby model.</span>
+</div>
+</div>
+</section>
+</div>
+<!-- RIGHT 4 COLS: REAL-TIME SIMULATION & PREDICTIVE METRICS -->
+<div class="xl:col-span-4 flex flex-col gap-space-lg">
+<!-- LIVE PROJECTED OUTCOME CARD -->
+<section class="bg-surface-container-low border border-outline-variant rounded-xl p-space-md sticky top-16">
+<div class="flex items-center justify-between pb-space-sm border-b border-outline-variant mb-space-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary" data-icon="monitoring">monitoring</span>
+<h3 class="text-headline-md font-headline-md text-on-surface">Live Outcome Simulation</h3>
+</div>
+<span class="flex h-2 w-2 relative">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
+</span>
+</div>
+<!-- Big Stat Hero -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant mb-space-sm">
+<div class="flex justify-between items-start mb-1">
+<span class="text-label-sm font-label-sm text-outline">PROJECTED BLENDED ROAS</span>
+<span class="text-mono-badge font-mono-badge text-secondary bg-secondary/10 px-1.5 py-0.5 rounded">95% CONFIDENCE</span>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="text-headline-xl font-headline-xl text-on-surface tracking-tight">4.65x вЂ“ 5.20x</span>
+</div>
+<p class="text-mono-sm font-mono-sm text-secondary mt-1 flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_upward">arrow_upward</span>
+              +1.12x vs. Static Historical Baseline
+            </p>
+</div>
+<!-- Secondary Metrics Row -->
+<div class="grid grid-cols-2 gap-2 mb-space-sm">
+<div class="p-2.5 bg-surface-container rounded-lg border border-outline-variant">
+<span class="text-mono-badge font-mono-badge text-outline block">EST. WEEKLY IMPR.</span>
+<span class="text-headline-md font-headline-md text-on-surface font-semibold">1,480,000</span>
+<span class="text-mono-sm font-mono-sm text-outline">В±45k variance</span>
+</div>
+<div class="p-2.5 bg-surface-container rounded-lg border border-outline-variant">
+<span class="text-mono-badge font-mono-badge text-outline block">ALPHA YIELD GAIN</span>
+<span class="text-headline-md font-headline-md text-secondary font-semibold">+$18,400</span>
+<span class="text-mono-sm font-mono-sm text-outline">Allocative efficiency</span>
+</div>
+</div>
+<!-- Synthetic Alpha Yield Simulation Graph (Instrument SVG) -->
+<div class="p-space-sm bg-surface-container rounded-lg border border-outline-variant mb-space-md">
+<div class="flex justify-between items-center mb-2">
+<span class="text-label-sm font-label-sm text-on-surface">Simulated Alpha Trajectory</span>
+<span class="text-mono-sm font-mono-sm text-outline">7-Day Monte Carlo</span>
+</div>
+<!-- Precision Vector Graph -->
+<div class="w-full h-32 relative flex items-end">
+<svg class="w-full h-full overflow-visible" fill="none" preserveaspectratio="none" viewbox="0 0 300 100">
+<!-- Grid Lines -->
+<line stroke="#464554" stroke-dasharray="3 3" stroke-width="0.5" x1="0" x2="300" y1="25" y2="25"></line>
+<line stroke="#464554" stroke-dasharray="3 3" stroke-width="0.5" x1="0" x2="300" y1="50" y2="50"></line>
+<line stroke="#464554" stroke-dasharray="3 3" stroke-width="0.5" x1="0" x2="300" y1="75" y2="75"></line>
+<!-- Fill Gradient Definition -->
+<defs>
+<lineargradient id="yieldGrad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#8083ff" stop-opacity="0.3"></stop>
+<stop offset="100%" stop-color="#8083ff" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<!-- Gradient Area -->
+<path d="M0,85 Q40,75 80,60 T160,40 T240,22 T300,10 L300,100 L0,100 Z" fill="url(#yieldGrad)"></path>
+<!-- Lower Confidence Bound -->
+<path d="M0,90 Q40,82 80,72 T160,55 T240,38 T300,24" fill="none" stroke="#464554" stroke-dasharray="2 2" stroke-width="1.2"></path>
+<!-- Main Trend Line (Primary Purple) -->
+<path d="M0,85 Q40,75 80,60 T160,40 T240,22 T300,10" fill="none" stroke="#c0c1ff" stroke-width="2"></path>
+<!-- Active Point -->
+<circle cx="300" cy="10" fill="#c0c1ff" r="3" stroke="#0e0e12" stroke-width="1.5"></circle>
+</svg>
+</div>
+<div class="flex justify-between text-mono-sm font-mono-sm text-outline mt-1">
+<span>Day 1 (Launch)</span>
+<span>Day 4 (Convergence)</span>
+<span class="text-primary font-mono-sm">Day 7 (Optimal)</span>
+</div>
+</div>
+<!-- Diagnostic Check List -->
+<div class="space-y-1.5 border-t border-outline-variant pt-3">
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-outline flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-sm" data-icon="check_circle">check_circle</span>
+                Dirichlet variance limits
+              </span>
+<span class="text-mono-sm font-mono-sm text-on-surface">Valid (0.02)</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-outline flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-sm" data-icon="check_circle">check_circle</span>
+                Creative AI asset resolution
+              </span>
+<span class="text-mono-sm font-mono-sm text-on-surface">3/3 Ready</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-outline flex items-center gap-1.5">
+<span class="material-symbols-outlined text-secondary text-sm" data-icon="check_circle">check_circle</span>
+                Meta Adv+ API webhook link
+              </span>
+<span class="text-mono-sm font-mono-sm text-secondary">Verified</span>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+<!-- ==================== STICKY WIZARD FOOTER ACTION BAR ==================== -->
+<footer class="fixed bottom-0 left-sidebar-width w-[calc(100%-15rem)] h-14 bg-surface-container-low/95 backdrop-blur border-t border-outline-variant z-40 px-space-xl flex items-center justify-between">
+<!-- Left: Secondary / Keyboard Shortcuts -->
+<div class="flex items-center gap-space-sm">
+<button class="h-8 px-space-sm bg-surface-container hover:bg-surface-container-high border border-outline-variant text-on-surface rounded-DEFAULT text-label-sm font-label-sm flex items-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-outline" data-icon="save">save</span>
+<span>Save as Draft</span>
+<span class="text-mono-badge font-mono-badge text-outline border border-outline-variant px-1 rounded bg-surface-container-lowest">вЊS</span>
+</button>
+<span class="hidden md:inline text-mono-sm font-mono-sm text-outline">
+        Auto-saved 34 seconds ago
+      </span>
+</div>
+<!-- Right: Step Navigation Controls -->
+<div class="flex items-center gap-space-sm">
+<!-- Back Action -->
+<button class="h-8 px-space-sm bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant text-on-surface-variant hover:text-on-surface rounded-DEFAULT text-label-sm font-label-sm flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+<span>Back to Budget</span>
+</button>
+<!-- Primary Action CTA -->
+<button class="h-8 px-space-md bg-primary hover:bg-primary-container text-on-primary font-medium rounded-DEFAULT text-label-sm font-label-sm flex items-center gap-1.5 shadow-[0_0_16px_rgba(128,131,255,0.35)] transition-all">
+<span>Proceed to Safeguards &amp; Review</span>
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</footer>
+</body></html>

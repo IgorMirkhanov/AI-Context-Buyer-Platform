@@ -77,6 +77,60 @@ export type SearchTermSnapshot = {
   conversions: number;
 };
 
+export type AccountCampaignStatus = "active" | "paused" | "archived";
+
+export type AccountCampaignSummary = {
+  externalCampaignId: string;
+  name: string;
+  status: AccountCampaignStatus;
+  dailyBudget?: number | null;
+};
+
+export type ConnectionVerificationResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+const CONNECTION_VERIFY_PATTERNS = [
+  /invalid oauth token/i,
+  /oauth token is missing/i,
+  /insufficient/i,
+  /permission/i,
+  /unauthorized/i,
+  /\b401\b/,
+  /\b403\b/,
+  /access denied/i,
+  /authentication/i,
+  /недостаточно прав/i,
+  /нет прав/i,
+  /not connected/i,
+];
+
+export function connectionVerificationMessage(err: unknown): string {
+  if (err instanceof PlatformApiError) {
+    return err.message;
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return "Проверка подключения к рекламному кабинету не удалась";
+}
+
+export function isConnectionVerificationError(err: unknown): boolean {
+  if (err instanceof PlatformApiError) {
+    const text = `${err.message} ${err.details}`;
+    if (CONNECTION_VERIFY_PATTERNS.some((pattern) => pattern.test(text))) {
+      return true;
+    }
+    return !err.retryable;
+  }
+  if (err instanceof Error) {
+    return CONNECTION_VERIFY_PATTERNS.some((pattern) =>
+      pattern.test(err.message),
+    );
+  }
+  return false;
+}
+
 export interface AdPlatformConnector {
   authorize(projectId: string): Promise<OAuthUrl>;
   handleOAuthCallback(projectId: string, code: string): Promise<Credentials>;
@@ -131,10 +185,18 @@ export interface AdPlatformConnector {
     campaignId: string,
     auth?: PlatformAuth,
   ): Promise<void>;
+  fetchAllAccountCampaigns(
+    projectId: string,
+    auth?: PlatformAuth,
+  ): Promise<AccountCampaignSummary[]>;
   refreshAccessToken(
     projectId: string,
     refreshToken: string,
   ): Promise<Credentials>;
+  verifyConnection(
+    projectId: string,
+    auth?: PlatformAuth,
+  ): Promise<ConnectionVerificationResult>;
 }
 
 export function assertStageNotReached(method: string): never {

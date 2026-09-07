@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, clearToken, getToken } from "@/lib/api";
+import { errorMessage } from "@/lib/api-errors";
 import { DEFAULT_BRANDING, OrgBranding } from "@/lib/branding";
 import { AppShell } from "@/shell/app-shell";
 import { Button } from "@/ui/button";
@@ -85,7 +86,7 @@ export default function AiProviderSettingsPage() {
         router.replace("/login");
         return;
       }
-      setLoadError(message || "Не удалось загрузить настройки");
+      setLoadError(errorMessage(err, "Не удалось загрузить настройки"));
     });
   }, [router]);
 

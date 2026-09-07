@@ -182,6 +182,8 @@ model AdPlatformCredential {
   expiresAt              DateTime?   @map("expires_at")
   scopes                 String?
   externalAccountId      String?     @map("external_account_id")
+  apiVerifiedAt          DateTime?   @map("api_verified_at")
+  apiVerificationError   String?     @map("api_verification_error")
   createdAt              DateTime    @default(now()) @map("created_at")
   project                Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -412,6 +414,11 @@ enum LiveCampaignStatus {
   archived
 }
 
+enum CampaignSource {
+  platform
+  external
+}
+
 model CampaignDraft {
   id             String               @id @default(uuid()) @db.Uuid
   projectId      String               @map("project_id") @db.Uuid
@@ -432,9 +439,11 @@ model Campaign {
   draftId              String?             @map("draft_id") @db.Uuid
   externalCampaignId   String              @map("external_campaign_id")
   platform             AdPlatform
+  source               CampaignSource      @default(platform)
   status               LiveCampaignStatus  @default(paused)
   budget               Decimal?            @db.Decimal(12, 2)
   targetingJson        Json?               @map("targeting_json")
+  syncedAt             DateTime?           @map("synced_at")
   createdAt            DateTime            @default(now()) @map("created_at")
   project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   draft                CampaignDraft?      @relation(fields: [draftId], references: [id], onDelete: SetNull)
@@ -442,7 +451,9 @@ model Campaign {
   recommendations      OptimizationRecommendation[]
   conversionEvents     ConversionEvent[]
 
+  @@unique([projectId, externalCampaignId])
   @@index([projectId])
+  @@index([projectId, source])
   @@map("campaigns")
 }
 

@@ -162,7 +162,22 @@ export class CampaignsService {
         orderBy: { startedAt: 'desc' },
       }),
     ]);
-    return { task, draft, campaigns };
+    return { task, draft, campaigns: campaigns.map((item) => {
+      const targeting = (item.targetingJson ?? {}) as {
+        campaignName?: string;
+        draftUnitIndex?: number;
+      };
+      return {
+        id: item.id,
+        externalCampaignId: item.externalCampaignId,
+        platform: item.platform,
+        source: item.source,
+        status: item.status,
+        budget: item.budget,
+        name: targeting.campaignName ?? null,
+        draftUnitIndex: targeting.draftUnitIndex ?? null,
+      };
+    }) };
   }
 
   async updateDraft(
@@ -309,6 +324,7 @@ export class CampaignsService {
             draftId: draft.id,
             externalCampaignId,
             platform: project.primaryPlatform,
+            source: 'platform',
             status: LiveCampaignStatus.paused,
             budget: unit.campaign.budget_daily,
             targetingJson: {

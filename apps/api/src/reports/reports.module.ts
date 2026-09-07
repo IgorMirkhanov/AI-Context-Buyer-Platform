@@ -7,5 +7,6 @@ import { ReportsController } from './reports.controller';
   imports: [ConnectorsModule],
   controllers: [ReportsController],
   providers: [ReportsService],
+  exports: [ReportsService],
 })
 export class ReportsModule {}

@@ -1,6 +1,9 @@
 import {
   AdPlatformConnector,
+  AccountCampaignSummary,
+  connectionVerificationMessage,
   Credentials,
+  ConnectionVerificationResult,
   KeywordIdea,
   OAuthUrl,
   PerformanceDateRange,
@@ -18,6 +21,7 @@ import { toYandexMoney, yandexRegionIds } from "./yandex-geo";
 export const YANDEX_AUTHORIZE_URL = "https://oauth.yandex.ru/authorize";
 export const YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token";
 export const YANDEX_LOGIN_INFO_URL = "https://login.yandex.ru/info?format=json";
+export const YANDEX_DEFAULT_OAUTH_SCOPE = "direct:api";
 
 export type YandexOAuthConfig = {
   clientId: string;
@@ -121,10 +125,8 @@ export class YandexDirectConnector implements AdPlatformConnector {
       redirect_uri: this.config.redirectUri,
       state,
       force_confirm: "yes",
+      scope: resolveConfiguredYandexScope(this.config),
     });
-    if (this.config.scope) {
-      params.set("scope", this.config.scope);
-    }
     return { url: `${YANDEX_AUTHORIZE_URL}?${params.toString()}` };
   }
 
@@ -151,7 +153,7 @@ export class YandexDirectConnector implements AdPlatformConnector {
       accessToken: token.access_token,
       refreshToken: token.refresh_token ?? null,
       expiresAt: new Date(Date.now() + expiresIn * 1000),
-      scopes: token.scope ?? this.config.scope ?? "",
+      scopes: resolveYandexOAuthScopes(token, this.config),
       externalAccountId,
     };
   }
@@ -173,7 +175,7 @@ export class YandexDirectConnector implements AdPlatformConnector {
       accessToken: token.access_token,
       refreshToken: token.refresh_token ?? refreshToken,
       expiresAt: new Date(Date.now() + expiresIn * 1000),
-      scopes: token.scope ?? this.config.scope ?? "",
+      scopes: resolveYandexOAuthScopes(token, this.config),
       externalAccountId: "",
     };
   }
@@ -418,6 +420,27 @@ export class YandexDirectConnector implements AdPlatformConnector {
     return this.ensurePaused(projectId, campaignId, auth);
   }
 
+  async fetchAllAccountCampaigns(
+    projectId: string,
+    auth?: PlatformAuth,
+  ): Promise<AccountCampaignSummary[]> {
+    this.requireProject(projectId);
+    return this.api.getAccountCampaigns(requireAuth(auth, projectId));
+  }
+
+  async verifyConnection(
+    projectId: string,
+    auth?: PlatformAuth,
+  ): Promise<ConnectionVerificationResult> {
+    this.requireProject(projectId);
+    try {
+      await this.api.probeConnection(requireAuth(auth, projectId));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: connectionVerificationMessage(err) };
+    }
+  }
+
   private requireProject(projectId: string): void {
     if (!projectId) {
       throw new Error("projectId is required");
@@ -448,6 +471,17 @@ type CreativeLike = {
   sitelinks?: string[];
   callouts?: string[];
 };
+
+function resolveConfiguredYandexScope(config: YandexOAuthConfig): string {
+  return config.scope?.trim() || YANDEX_DEFAULT_OAUTH_SCOPE;
+}
+
+function resolveYandexOAuthScopes(
+  token: YandexTokenResponse,
+  config: YandexOAuthConfig,
+): string {
+  return token.scope?.trim() || resolveConfiguredYandexScope(config);
+}
 
 function requestYandexToken(
   config: YandexOAuthConfig,

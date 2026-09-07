@@ -102,9 +102,9 @@ test.describe("Контекстолог в портфеле", () => {
     await expect(
       specialistPage.getByRole("button", { name: "Запустить анализ" }),
     ).toBeEnabled();
-    await openProjectTab(specialistPage, "Семантика");
+    await openProjectTab(specialistPage, "План");
     await expect(
-      specialistPage.getByRole("button", { name: "Собрать семантику" }),
+      specialistPage.getByRole("button", { name: /Собрать семантику/ }),
     ).toBeDisabled();
 
     await specialistContext.close();

@@ -1,5 +1,6 @@
 import {
   deriveMasksFromUsp,
+  collapseConsecutiveDuplicateTokens,
   filterKeywordIdeas,
   isCommercialKeyword,
   masksFromBrief,
@@ -54,9 +55,39 @@ describe('masksFromBrief', () => {
       expect.arrayContaining([
         'установка брекетов под ключ санкт-петербург цена',
         'установка брекетов под ключ санкт-петербург стоимость',
-        'купить установка брекетов под ключ санкт-петербург',
+        'заказать установка брекетов под ключ санкт-петербург',
       ]),
     );
+    expect(masks.some((m) => m.startsWith('купить установка'))).toBe(false);
+  });
+
+  it('strips marketing leads and does not invent «купить отдел»', () => {
+    const brief: SemanticBriefInput = {
+      website_url: 'https://dev.example',
+      geo: ['RU-MOW'],
+      usp: ['лучший отдел разработки'],
+      target_audience: [],
+      global_negative_keywords: [],
+    };
+    const masks = masksFromBrief(brief, '');
+    expect(masks).toEqual(
+      expect.arrayContaining([
+        'отдел разработки',
+        'отдел разработки москва цена',
+        'заказать отдел разработки москва',
+      ]),
+    );
+    expect(masks.some((m) => m.includes('купить отдел'))).toBe(false);
+  });
+
+  it('does not take arbitrary landing tokens as masks', () => {
+    const masks = masksFromBrief(
+      gamingBrief,
+      'цветной текстурной глянцевой главная услуги контакты',
+    );
+    expect(masks.some((m) => m.includes('цветной'))).toBe(false);
+    expect(masks.some((m) => m === 'текстурной')).toBe(false);
+    expect(masks.some((m) => m === 'главная')).toBe(false);
   });
 });
 
@@ -97,6 +128,30 @@ describe('phraseClusteringCore', () => {
   });
 });
 
+describe('collapseConsecutiveDuplicateTokens', () => {
+  it('removes consecutive duplicate tokens', () => {
+    expect(collapseConsecutiveDuplicateTokens('купить купить ноутбук')).toBe(
+      'купить ноутбук',
+    );
+    expect(collapseConsecutiveDuplicateTokens('услуга цена цена')).toBe(
+      'услуга цена',
+    );
+  });
+});
+
+describe('deriveMasksFromUsp — singularization', () => {
+  it('does not truncate -адки nouns like разработки', () => {
+    for (const mask of deriveMasksFromUsp('игровые разработки сайтов под ключ')) {
+      expect(mask).not.toMatch(/\bразработк\b/u);
+    }
+  });
+
+  it('still derives ноутбук from ноутбуки', () => {
+    expect(deriveMasksFromUsp('игровые ноутбуки asus')).toEqual(
+      expect.arrayContaining(['игровой ноутбук asus', 'ноутбук asus']),
+    );
+  });
+});
 describe('filterKeywordIdeas', () => {
   it('drops service repair phrases and global negatives', () => {
     const filtered = filterKeywordIdeas(

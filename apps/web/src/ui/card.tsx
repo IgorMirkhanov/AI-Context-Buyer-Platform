@@ -9,7 +9,7 @@ export function Card({
 }) {
   return (
     <section
-      className={`mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)] ${className}`}
+      className={`ui-panel relative mb-4 p-4 ${className}`}
     >
       {children}
     </section>
@@ -17,7 +17,11 @@ export function Card({
 }
 
 export function CardTitle({ children }: { children: ReactNode }) {
-  return <h2 className="mb-2 text-base font-semibold tracking-tight">{children}</h2>;
+  return (
+    <h2 className="mb-2 text-base font-semibold tracking-tight text-[var(--fg)]">
+      {children}
+    </h2>
+  );
 }
 
 export function CardHint({ children }: { children: ReactNode }) {

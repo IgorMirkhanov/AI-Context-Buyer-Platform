@@ -24,8 +24,15 @@ export class ReportsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('source') source?: 'all' | 'platform' | 'external',
   ) {
-    return this.reports.getReport(req.user.organizationId, id, from, to);
+    return this.reports.getReport(
+      req.user.organizationId,
+      id,
+      from,
+      to,
+      source ?? 'all',
+    );
   }
 
   @Post('collect')

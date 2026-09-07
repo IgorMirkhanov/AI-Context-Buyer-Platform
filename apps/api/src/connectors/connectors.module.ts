@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   createAttributionConnector,
   createGoogleOAuthClient,
+  createMockGoogleOAuthClient,
   createMediaGenerationApi,
   createMockYandexOAuthClient,
   createYandexOAuthClient,
@@ -18,11 +19,13 @@ import {
   MockGoogleAdsApi,
   MockKeywordIdeasProvider,
   MockYandexDirectApi,
+  YANDEX_DEFAULT_OAUTH_SCOPE,
   YandexDirectConnector,
 } from '@context-buyer/connectors';
 import type { AttributionApi, AttributionProviderName } from '@context-buyer/connectors';
 import { ConnectorRouter } from './connector-router';
 import { AttributionRouter } from './attribution-router';
+import { PlatformConnectionService } from './platform-connection.service';
 
 @Module({
   providers: [
@@ -39,7 +42,9 @@ import { AttributionRouter } from './attribution-router';
           redirectUri:
             config.get<string>('YANDEX_REDIRECT_URI') ??
             'http://localhost:3001/oauth/yandex/callback',
-          scope: config.get<string>('YANDEX_OAUTH_SCOPE') || undefined,
+          scope:
+            config.get<string>('YANDEX_OAUTH_SCOPE')?.trim() ||
+            YANDEX_DEFAULT_OAUTH_SCOPE,
           mock,
         };
         const api = mock
@@ -62,6 +67,9 @@ import { AttributionRouter } from './attribution-router';
       provide: GoogleAdsConnector,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        const mock =
+          config.get<string>('GOOGLE_ADS_MOCK') === '1' ||
+          config.get<string>('GOOGLE_ADS_MOCK') === 'true';
         const oauthConfig = {
           clientId: config.get<string>('GOOGLE_ADS_CLIENT_ID') ?? '',
           clientSecret: config.get<string>('GOOGLE_ADS_CLIENT_SECRET') ?? '',
@@ -71,10 +79,20 @@ import { AttributionRouter } from './attribution-router';
           developerToken: config.get<string>('GOOGLE_ADS_DEVELOPER_TOKEN') ?? '',
           loginCustomerId:
             config.get<string>('GOOGLE_ADS_LOGIN_CUSTOMER_ID') || undefined,
+          mock,
         };
-        const mock =
-          config.get<string>('GOOGLE_ADS_MOCK') === '1' ||
-          config.get<string>('GOOGLE_ADS_MOCK') === 'true';
+        if (
+          !mock &&
+          (!oauthConfig.clientId.trim() ||
+            !oauthConfig.clientSecret.trim() ||
+            !oauthConfig.developerToken.trim())
+        ) {
+          // Soft signal at boot; connect endpoint still fails closed via ProjectsService.
+          // eslint-disable-next-line no-console
+          console.warn(
+            '[GoogleAds] GOOGLE_ADS_MOCK is off but CLIENT_ID / CLIENT_SECRET / DEVELOPER_TOKEN are incomplete',
+          );
+        }
         const api = mock
           ? new MockGoogleAdsApi()
           : new LiveGoogleAdsApi(
@@ -83,13 +101,16 @@ import { AttributionRouter } from './attribution-router';
             );
         return new GoogleAdsConnector(
           oauthConfig,
-          createGoogleOAuthClient(oauthConfig),
+          mock
+            ? createMockGoogleOAuthClient(oauthConfig)
+            : createGoogleOAuthClient(oauthConfig),
           new MockKeywordIdeasProvider(),
           api,
         );
       },
     },
     ConnectorRouter,
+    PlatformConnectionService,
     {
       provide: AttributionRouter,
       inject: [ConfigService],
@@ -131,6 +152,7 @@ import { AttributionRouter } from './attribution-router';
     YandexDirectConnector,
     GoogleAdsConnector,
     ConnectorRouter,
+    PlatformConnectionService,
     AttributionRouter,
     MediaGenerationConnector,
   ],

@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   AgentTaskStatus,
   AgentType,
+  CampaignSource,
   LiveCampaignStatus,
 } from '@prisma/client';
 import {
@@ -79,7 +80,7 @@ export class ReportsService implements OnModuleInit {
     });
     if (campaigns.length === 0) {
       throw new BadRequestException(
-        'Сначала опубликуйте кампанию на вкладке «Кампания»',
+        'В кабинете пока нет кампаний для сбора статистики. Дождитесь синхронизации или опубликуйте кампанию на вкладке «Кампания».',
       );
     }
     const snapshots = await this.collectProject(projectId, campaigns);
@@ -121,6 +122,7 @@ export class ReportsService implements OnModuleInit {
     projectId: string,
     from?: string,
     to?: string,
+    source: CampaignSourceFilter = 'all',
   ): Promise<{
     report: PerformanceReport;
     series: ChartPoint[];
@@ -148,10 +150,7 @@ export class ReportsService implements OnModuleInit {
         orderBy: { date: 'asc' },
       }),
       this.prisma.campaign.findMany({
-        where: {
-          projectId,
-          status: { not: LiveCampaignStatus.archived },
-        },
+        where: { projectId },
         include: { draft: true },
       }),
       this.prisma.projectBrief.findFirst({
@@ -163,7 +162,10 @@ export class ReportsService implements OnModuleInit {
     const targetCpl = payload?.project.target_cpl ?? 0;
     const dailyBudget = payload?.project.budget?.daily ?? null;
     const currency = payload?.project.budget?.currency ?? '';
-    const campaignMeta = liveCampaigns.map((campaign) => {
+    const filteredCampaigns = filterCampaignsBySource(liveCampaigns, source);
+    const campaignIds = new Set(filteredCampaigns.map((item) => item.id));
+    const filteredRows = rows.filter((row) => campaignIds.has(row.campaignId));
+    const campaignMeta = filteredCampaigns.map((campaign) => {
       const targeting = (campaign.targetingJson ?? {}) as {
         campaignName?: string;
         draftUnitIndex?: number;
@@ -179,10 +181,11 @@ export class ReportsService implements OnModuleInit {
           `Кампания ${campaign.externalCampaignId}`,
         externalCampaignId: campaign.externalCampaignId,
         status: campaign.status,
+        source: campaign.source,
       };
     });
     const analytics = buildAnalyticsView({
-      snapshots: rows.map((row) => ({
+      snapshots: filteredRows.map((row) => ({
         date: row.date.toISOString().slice(0, 10),
         campaignId: row.campaignId,
         adGroupExternalId: row.adGroupExternalId,
@@ -198,7 +201,7 @@ export class ReportsService implements OnModuleInit {
       currency,
     });
     const analytics7d = buildAnalyticsView({
-      snapshots: rows.map((row) => ({
+      snapshots: filteredRows.map((row) => ({
         date: row.date.toISOString().slice(0, 10),
         campaignId: row.campaignId,
         adGroupExternalId: row.adGroupExternalId,
@@ -250,6 +253,14 @@ export class ReportsService implements OnModuleInit {
       spend7d,
       llmUsage,
     };
+  }
+
+  async collectCampaignSnapshots(
+    projectId: string,
+    campaigns: Array<{ id: string; externalCampaignId: string }>,
+  ): Promise<number> {
+    if (campaigns.length === 0) return 0;
+    return this.collectProject(projectId, campaigns);
   }
 
   private async collectProject(
@@ -352,6 +363,17 @@ export class ReportsService implements OnModuleInit {
 }
 
 const COLLECT_LOOKBACK_DAYS = 90;
+
+export type CampaignSourceFilter = 'all' | 'platform' | 'external';
+
+export function filterCampaignsBySource<
+  T extends { source: CampaignSource },
+>(campaigns: T[], source: CampaignSourceFilter): T[] {
+  if (source === 'all') return campaigns;
+  const expected =
+    source === 'platform' ? CampaignSource.platform : CampaignSource.external;
+  return campaigns.filter((item) => item.source === expected);
+}
 
 function parsePeriod(
   from?: string,

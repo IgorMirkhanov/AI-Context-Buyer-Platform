@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html class="dark" lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Context-Buyer — адаптированный shell</title>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            surface: "#131317",
+            "surface-low": "#1b1b1f",
+            "surface-mid": "#1f1f23",
+            "surface-high": "#2a292e",
+            "surface-lowest": "#0e0e12",
+            "on-surface": "#e4e1e7",
+            "on-muted": "#c7c4d7",
+            outline: "#908fa0",
+            "outline-var": "#464554",
+            hairline: "#272732",
+            primary: "#c0c1ff",
+            "primary-box": "#8083ff",
+            secondary: "#4edea3",
+            danger: "#ffb4ab",
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            display: ["Geist", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    .material-symbols-outlined {
+      font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .hairline { border: 1px solid #272732; }
+    .hairline-r { border-right: 1px solid #272732; }
+    .hairline-b { border-bottom: 1px solid #272732; }
+    .hairline-t { border-top: 1px solid #272732; }
+    .edge-glow::after {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(128,131,255,.4), transparent 70%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-surface-lowest text-on-surface font-sans antialiased min-h-screen flex">
+  <!-- SIDEBAR: реальная IA продукта -->
+  <aside class="fixed left-0 top-0 z-40 flex h-full w-60 flex-col justify-between bg-surface-low p-3 hairline-r">
+    <div>
+      <div class="mb-4 flex items-center gap-2 px-2 py-1">
+        <div class="flex h-7 w-7 items-center justify-center rounded bg-primary-box/25 hairline text-primary text-xs font-semibold font-display">CB</div>
+        <div class="min-w-0">
+          <div class="truncate font-display text-[15px] font-semibold leading-none">AI Context-Buyer</div>
+          <div class="mt-1 font-mono text-[11px] text-outline">Агентство · white-label</div>
+        </div>
+      </div>
+
+      <nav class="mb-4 flex flex-col gap-0.5" aria-label="Глобально">
+        <a class="rounded px-2 py-1.5 text-sm bg-surface-high text-on-surface border-l-2 border-primary-box" href="#">Портфель проектов</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid hover:text-on-surface" href="#">Настройки · ИИ</a>
+      </nav>
+
+      <p class="mb-2 px-2 text-[11px] font-medium uppercase tracking-wide text-outline">ProBkesk</p>
+      <nav class="flex flex-col gap-0.5" aria-label="Проект">
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Бриф</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Анализ</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">План</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Объявления</a>
+        <a class="rounded px-2 py-1.5 text-sm bg-surface-high text-on-surface border-l-2 border-primary-box" href="#">Кампания</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Аналитика</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Рекомендации</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Автопилот</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Журнал</a>
+        <a class="rounded px-2 py-1.5 text-sm text-on-muted hover:bg-surface-mid" href="#">Расходы</a>
+      </nav>
+    </div>
+
+    <div class="hairline-t pt-3 space-y-2">
+      <div class="rounded bg-surface-lowest px-2 py-1.5 hairline flex items-center justify-between text-[11px] font-mono">
+        <span class="flex items-center gap-1.5 text-outline"><span class="h-1.5 w-1.5 rounded-full bg-secondary"></span>Кабинет</span>
+        <span class="text-secondary">нужен OAuth</span>
+      </div>
+      <button class="w-full rounded bg-surface-mid hairline px-2 py-1.5 text-xs text-on-surface hover:bg-surface-high flex items-center justify-center gap-1">
+        <span class="material-symbols-outlined text-[14px] text-primary">link</span>
+        Подключить Яндекс Директ
+      </button>
+    </div>
+  </aside>
+
+  <div class="ml-60 flex min-h-screen flex-1 flex-col">
+    <!-- TOP BAR -->
+    <header class="sticky top-0 z-30 flex h-12 items-center justify-between bg-surface px-4 hairline-b backdrop-blur">
+      <div class="flex items-center gap-3 text-xs">
+        <span class="text-outline">Портфель</span>
+        <span class="text-outline-var">/</span>
+        <span class="text-outline">ProBkesk</span>
+        <span class="text-outline-var">/</span>
+        <span class="font-medium text-on-surface">Кампания</span>
+        <span class="ml-2 rounded bg-secondary/15 px-1.5 py-0.5 font-mono text-[10px] text-secondary border border-secondary/25">черновик готов</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="h-8 rounded bg-surface-mid hairline px-2.5 text-xs text-on-surface hover:bg-surface-high flex items-center gap-1">
+          <span class="material-symbols-outlined text-[14px] text-outline">sync</span>
+          Обновить статистику
+        </button>
+        <button class="h-8 rounded bg-primary-box px-3 text-xs font-medium text-[#0d0096] shadow-[0_0_14px_rgba(128,131,255,0.25)] flex items-center gap-1">
+          <span class="material-symbols-outlined text-[14px]">play_arrow</span>
+          Запустить кампанию
+        </button>
+      </div>
+    </header>
+
+    <main class="mx-auto flex w-full max-w-[88rem] flex-1 flex-col gap-4 p-4">
+      <!-- PIPELINE STEPPER (из wizard, наши шаги) -->
+      <section class="rounded-lg bg-surface-low hairline p-3 relative edge-glow">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <h1 class="font-display text-xl font-semibold tracking-tight">Пайплайн до черновика</h1>
+            <p class="text-xs text-outline">Детерминированная очередь: бриф → анализ → план → объявления → черновик.</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="h-8 rounded bg-surface-mid hairline px-3 text-xs hover:bg-surface-high">Отменить и доработать</button>
+            <button class="h-8 rounded bg-primary-box px-3 text-xs font-medium text-[#0d0096]">Прогнать пайплайн до черновика</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div class="flex items-center gap-2 rounded bg-surface-lowest/70 hairline p-2">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-secondary/20 text-secondary text-xs">✓</span>
+            <div><div class="font-mono text-[10px] text-outline">01</div><div class="text-xs">Бриф</div></div>
+          </div>
+          <div class="flex items-center gap-2 rounded bg-surface-lowest/70 hairline p-2">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-secondary/20 text-secondary text-xs">✓</span>
+            <div><div class="font-mono text-[10px] text-outline">02</div><div class="text-xs">Анализ</div></div>
+          </div>
+          <div class="flex items-center gap-2 rounded bg-surface-lowest/70 hairline p-2">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-secondary/20 text-secondary text-xs">✓</span>
+            <div><div class="font-mono text-[10px] text-outline">03</div><div class="text-xs">План</div></div>
+          </div>
+          <div class="flex items-center gap-2 rounded bg-surface-high hairline border-primary/50 p-2 shadow-[0_0_12px_rgba(128,131,255,0.15)]">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-box text-[11px] font-semibold text-[#0d0096]">4</span>
+            <div><div class="font-mono text-[10px] text-primary">сейчас</div><div class="text-xs font-medium">Объявления</div></div>
+          </div>
+          <div class="flex items-center gap-2 rounded bg-surface-lowest/40 hairline p-2 opacity-70">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-surface-high text-outline text-xs">5</span>
+            <div><div class="font-mono text-[10px] text-outline">05</div><div class="text-xs text-outline">Кампания</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- KPI (из dashboard, наши метрики) -->
+      <section class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div class="relative rounded-lg bg-surface-low hairline p-3 edge-glow">
+          <div class="text-[11px] text-outline">Расход (30 дн.)</div>
+          <div class="mt-1 font-display text-2xl font-semibold tracking-tight font-mono">₽ 0</div>
+          <div class="mt-2 hairline-t pt-2 font-mono text-[11px] text-outline">Нужна синхронизация кабинета</div>
+        </div>
+        <div class="relative rounded-lg bg-surface-low hairline p-3 edge-glow">
+          <div class="text-[11px] text-outline">CPL / конверсии</div>
+          <div class="mt-1 font-display text-2xl font-semibold tracking-tight font-mono">—</div>
+          <div class="mt-2 hairline-t pt-2 font-mono text-[11px] text-outline">После сбора отчётов</div>
+        </div>
+        <div class="relative rounded-lg bg-surface-low hairline p-3 edge-glow">
+          <div class="text-[11px] text-outline">Кампании в кабинете</div>
+          <div class="mt-1 font-display text-2xl font-semibold tracking-tight font-mono">0</div>
+          <div class="mt-2 hairline-t pt-2 font-mono text-[11px] text-secondary">source: platform + external</div>
+        </div>
+        <div class="relative rounded-lg bg-surface-low hairline p-3 edge-glow">
+          <div class="text-[11px] text-outline">Расходы LLM</div>
+          <div class="mt-1 font-display text-2xl font-semibold tracking-tight font-mono">$ —</div>
+          <div class="mt-2 hairline-t pt-2 font-mono text-[11px] text-outline">по project_id · вкладка Расходы</div>
+        </div>
+      </section>
+
+      <!-- CREATIVES (из 03, наши кнопки) -->
+      <section class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div class="lg:col-span-2 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-display text-lg font-medium">Варианты объявлений</h2>
+            <div class="flex gap-2">
+              <button class="h-8 rounded bg-surface-mid hairline px-3 text-xs">Сохранить правки</button>
+              <button class="h-8 rounded bg-primary-box px-3 text-xs font-medium text-[#0d0096]">Сгенерировать объявления</button>
+            </div>
+          </div>
+          <article class="rounded-lg bg-surface-low hairline p-4 relative edge-glow">
+            <div class="mb-2 flex items-center justify-between">
+              <span class="rounded bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary border border-primary/20">Группа · Поиск</span>
+              <span class="font-mono text-[10px] text-outline">Яндекс Директ</span>
+            </div>
+            <div class="text-[11px] uppercase tracking-wide text-outline">Заголовок 1</div>
+            <p class="mt-1 text-sm font-semibold">Оклейка кузова плёнкой PPF в Алматы</p>
+            <div class="mt-2 text-[11px] uppercase tracking-wide text-outline">Текст</div>
+            <p class="mt-1 text-sm text-on-muted">Защитная полиуретановая плёнка, нанокерамика, детейлинг ProBlesk. Срок 1–3 дня.</p>
+            <div class="mt-3 flex justify-end gap-2 hairline-t pt-3">
+              <button class="h-7 rounded bg-surface-mid hairline px-2 text-xs">Редактировать</button>
+              <button class="h-7 rounded bg-surface-mid hairline px-2 text-xs">Перегенерировать</button>
+            </div>
+          </article>
+        </div>
+
+        <aside class="rounded-lg bg-surface-low hairline p-4 relative edge-glow h-fit">
+          <h3 class="font-display text-base font-medium mb-3">Рекомендации агента</h3>
+          <div class="space-y-2">
+            <div class="rounded bg-surface-mid hairline p-2.5">
+              <div class="font-mono text-[10px] text-secondary">PAUSE_KEYWORD</div>
+              <p class="mt-1 text-xs">Пауза минус-слов из «главная / услуги» — навигационный мусор в семантике.</p>
+              <div class="mt-2 flex gap-2">
+                <button class="h-7 flex-1 rounded bg-primary-box text-[11px] font-medium text-[#0d0096]">Принять</button>
+                <button class="h-7 flex-1 rounded bg-surface-high hairline text-[11px]">Отклонить</button>
+              </div>
+            </div>
+            <button class="w-full h-8 rounded bg-surface-mid hairline text-xs hover:bg-surface-high">Применить принятые</button>
+          </div>
+        </aside>
+      </section>
+
+      <!-- TABLE (из 01) -->
+      <section class="overflow-hidden rounded-lg bg-surface-low hairline relative edge-glow">
+        <div class="flex items-center justify-between p-3 hairline-b">
+          <h2 class="font-display text-base font-medium">Кампании проекта</h2>
+          <div class="flex gap-2">
+            <button class="h-7 rounded bg-surface-mid hairline px-2 text-xs">Только платформа</button>
+            <button class="h-7 rounded bg-surface-high hairline px-2 text-xs">Все</button>
+          </div>
+        </div>
+        <table class="w-full text-left text-sm">
+          <thead class="bg-surface-lowest text-[11px] text-outline">
+            <tr class="hairline-b">
+              <th class="px-3 py-2 font-medium">Название</th>
+              <th class="px-3 py-2 font-medium">Платформа</th>
+              <th class="px-3 py-2 font-medium">Источник</th>
+              <th class="px-3 py-2 font-medium text-right">Бюджет/день</th>
+              <th class="px-3 py-2 font-medium">Статус</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-surface-mid">
+            <tr class="hover:bg-surface-mid/50">
+              <td class="px-3 py-2.5">
+                <div class="font-medium">ProBkesk · Поиск</div>
+                <div class="font-mono text-[10px] text-outline">черновик · не опубликован</div>
+              </td>
+              <td class="px-3 py-2.5"><span class="rounded hairline bg-surface-lowest px-1.5 py-0.5 font-mono text-[10px]">Яндекс Директ</span></td>
+              <td class="px-3 py-2.5 font-mono text-[11px] text-outline">platform</td>
+              <td class="px-3 py-2.5 text-right font-mono text-xs">из брифа</td>
+              <td class="px-3 py-2.5"><span class="rounded-full bg-primary/10 border border-primary/25 px-2 py-0.5 font-mono text-[10px] text-primary">draft</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer class="hairline-t px-4 py-2 flex justify-between font-mono text-[10px] text-outline">
+      <span>AI Context-Buyer · без автопубликации</span>
+      <span>дизайн: Stitch tokens · IA: наша</span>
+    </footer>
+  </div>
+</body>
+</html>

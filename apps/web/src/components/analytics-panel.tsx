@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { formatCabinetSpend, cabinetCurrencySymbol } from "@/lib/cabinet-currency";
+import type { CampaignRef } from "@/lib/project-campaign-refs";
+import { ProjectContextPanel } from "@/components/project-context-panel";
+import { cabinetCampaignUrl } from "@/lib/ad-platform-links";
 import { Alert } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { btnClass } from "@/ui/button";
 import { Card, CardHint, CardTitle } from "@/ui/card";
+import { AreaChart, BarChart } from "@/ui/charts";
+import { KpiCard, KpiGrid, SegmentedControl, StatusDot } from "@/ui/kpi";
 import { TermHint, BeginnerNote } from "@/ui/term-hint";
 
 export type ChartPoint = {
@@ -49,6 +54,7 @@ export type ReportResult = {
     name: string;
     externalCampaignId: string;
     status: string;
+    source?: "platform" | "external";
     metrics: MetricsSummary;
     series: ChartPoint[];
   }>;
@@ -106,6 +112,7 @@ export type AttributionResult = {
 };
 
 type PeriodDays = 7 | 30 | 90;
+type CampaignSourceFilter = "all" | "platform" | "external";
 type CabinetMetric =
   | "impressions"
   | "clicks"
@@ -188,9 +195,14 @@ export function AnalyticsPanel({
   onConnectAttribution,
   onCollectAttribution,
   cabinetConnected,
-  hasPublishedCampaigns,
+  cabinetNeedsReconnect = false,
+  hasPlatformCampaigns,
+  hasAnyCampaigns,
   hasCampaignDraft,
   reportError,
+  analyzedWebsiteUrl = null,
+  platform = "yandex_direct",
+  campaignRefs = [],
 }: {
   projectId: string;
   report: ReportResult | null;
@@ -208,11 +220,17 @@ export function AnalyticsPanel({
   onConnectAttribution: () => Promise<void>;
   onCollectAttribution: () => Promise<void>;
   cabinetConnected: boolean;
-  hasPublishedCampaigns: boolean;
+  cabinetNeedsReconnect?: boolean;
+  hasPlatformCampaigns: boolean;
+  hasAnyCampaigns: boolean;
   hasCampaignDraft: boolean;
   reportError: string | null;
+  analyzedWebsiteUrl?: string | null;
+  platform?: string;
+  campaignRefs?: CampaignRef[];
 }) {
   const [days, setDays] = useState<PeriodDays>(7);
+  const [sourceFilter, setSourceFilter] = useState<CampaignSourceFilter>("all");
   const [metric, setMetric] = useState<CabinetMetric>("spend");
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [adGroupId, setAdGroupId] = useState<string | null>(null);
@@ -226,14 +244,15 @@ export function AnalyticsPanel({
     const { from, to } = periodForDays(days);
     const reportMatches =
       seedReport?.report.period.from === from &&
-      seedReport?.report.period.to === to;
+      seedReport?.report.period.to === to &&
+      sourceFilter === "all";
     const attrMatches =
       seedAttribution?.period.from === from &&
       seedAttribution?.period.to === to;
     if (reportMatches) setView(seedReport);
     else {
       void api<ReportResult>(
-        `/projects/${projectId}/reports?from=${from}&to=${to}`,
+        `/projects/${projectId}/reports?from=${from}&to=${to}&source=${sourceFilter}`,
       )
         .then((data) => {
           if (!cancelled) setView(data);
@@ -253,7 +272,7 @@ export function AnalyticsPanel({
     return () => {
       cancelled = true;
     };
-  }, [days, projectId, seedReport, seedAttribution]);
+  }, [days, projectId, seedReport, seedAttribution, sourceFilter]);
 
   const selectedCampaign = (view?.campaigns ?? []).find(
     (item) => item.id === campaignId,
@@ -292,39 +311,74 @@ export function AnalyticsPanel({
   return (
     <>
       <Card>
-        <CardTitle>Отчёт</CardTitle>
-        <CardHint>
-          {view
-            ? `${view.report.period.from} — ${view.report.period.to}`
-            : "Снимков ещё нет. После запуска кампании нажмите «Обновить статистику»."}
-        </CardHint>
-        {!cabinetConnected ? (
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle>Аналитика кабинета</CardTitle>
+            <CardHint>
+              {view
+                ? `${view.report.period.from} — ${view.report.period.to}`
+                : "Снимков ещё нет. После запуска кампании нажмите «Обновить статистику»."}
+            </CardHint>
+          </div>
+          <StatusDot
+            tone={
+              cabinetNeedsReconnect
+                ? "warn"
+                : cabinetConnected
+                  ? "ok"
+                  : "off"
+            }
+            label={
+              cabinetNeedsReconnect
+                ? "нужен reconnect"
+                : cabinetConnected
+                  ? "кабинет online"
+                  : "кабинет offline"
+            }
+          />
+        </div>
+        <div className="mb-3">
+          <ProjectContextPanel
+            websiteUrl={analyzedWebsiteUrl}
+            platform={platform}
+            connected={cabinetConnected}
+            needsReconnect={cabinetNeedsReconnect}
+            campaignRefs={campaignRefs}
+            compact
+          />
+        </div>
+        {cabinetNeedsReconnect ? (
+          <Alert tone="danger" className="mb-3" title="Требуется переподключение">
+            OAuth-токен есть, но API рекламного кабинета недоступен. Переподключите
+            кабинет в блоке «Подключение кабинета» выше.
+          </Alert>
+        ) : !cabinetConnected ? (
           <Alert tone="alert" className="mb-3" title="Кабинет не подключён">
             Подключите {`Яндекс Директ / Google Ads`} в блоке «Подключение кабинета»
             выше — без OAuth статистику из рекламной платформы не получить.
           </Alert>
-        ) : !hasPublishedCampaigns ? (
-          <Alert tone="info" className="mb-3" title="Кабинет подключён — осталось опубликовать кампанию">
-            OAuth работает, но в Директе ещё нет кампании из этого проекта.
-            {hasCampaignDraft ? (
+        ) : !hasAnyCampaigns ? (
+          <Alert tone="info" className="mb-3" title="Кабинет подключён — ждём список кампаний">
+            OAuth работает. Синхронизация кампаний из кабинета выполняется автоматически
+            (раз в несколько часов) или после нажатия «Обновить статистику».
+            {!hasPlatformCampaigns && hasCampaignDraft ? (
               <>
                 {" "}
-                Черновик готов — откройте вкладку{" "}
+                Черновик платформы готов — откройте вкладку{" "}
                 <Link
                   href={`/projects/${projectId}?tab=campaign`}
                   className="font-medium underline"
                 >
                   «Кампания»
                 </Link>
-                , подтвердите чекбокс и нажмите «Запустить кампанию».
+                , чтобы запустить свою кампанию.
               </>
-            ) : (
-              <>
-                {" "}
-                Сначала прогоните пайплайн до черновика или соберите кампанию на
-                вкладке «Кампания».
-              </>
-            )}
+            ) : null}
+          </Alert>
+        ) : !hasPlatformCampaigns ? (
+          <Alert tone="info" className="mb-3" title="Только кампании из кабинета">
+            В аналитике показаны кампании, созданные до подключения платформы.
+            Оптимизация и автопилот применяются только к кампаниям, запущенным через платформу.
           </Alert>
         ) : null}
         {reportError ? (
@@ -332,32 +386,45 @@ export function AnalyticsPanel({
             {reportError}
           </Alert>
         ) : null}
-        <div className="mb-3 flex flex-wrap gap-2">
-          {([7, 30, 90] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={days === item}
-              className={btnClass(days === item ? "primary" : "secondary")}
-              onClick={() => {
-                setDays(item);
-                setCampaignId(null);
-                setAdGroupId(null);
-              }}
-            >
-              {item} дней
-            </button>
-          ))}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <SegmentedControl
+            ariaLabel="Период отчёта"
+            value={String(days) as "7" | "30" | "90"}
+            options={[
+              { value: "7", label: "7 дней" },
+              { value: "30", label: "30 дней" },
+              { value: "90", label: "90 дней" },
+            ]}
+            onChange={(v) => {
+              setDays(Number(v) as PeriodDays);
+              setCampaignId(null);
+              setAdGroupId(null);
+            }}
+          />
+          <SegmentedControl
+            ariaLabel="Источник кампаний"
+            value={sourceFilter}
+            options={[
+              { value: "all", label: "Все" },
+              { value: "platform", label: "Платформа" },
+              { value: "external", label: "Из кабинета" },
+            ]}
+            onChange={(v) => {
+              setSourceFilter(v);
+              setCampaignId(null);
+              setAdGroupId(null);
+            }}
+          />
         </div>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <button
             className={btnClass("primary")}
             onClick={() => void onCollectReport()}
-            disabled={pending || readOnly || !cabinetConnected || !hasPublishedCampaigns}
+            disabled={pending || readOnly || !cabinetConnected || !hasAnyCampaigns}
           >
             {pending ? "Собираем…" : "Обновить статистику"}
           </button>
-          {cabinetConnected && !hasPublishedCampaigns && hasCampaignDraft ? (
+          {cabinetConnected && !hasAnyCampaigns && hasCampaignDraft ? (
             <Link
               href={`/projects/${projectId}?tab=campaign`}
               className={btnClass("secondary")}
@@ -375,38 +442,54 @@ export function AnalyticsPanel({
                 Показы, клики и расход — из Директа / Google Ads, не из CRM
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              <Kpi
+            <KpiGrid cols={5}>
+              <KpiCard
                 label="Показы"
-                value={String(chartMetrics?.impressions ?? view.report.metrics.impressions)}
+                value={(chartMetrics?.impressions ?? view.report.metrics.impressions).toLocaleString("ru-RU")}
+                spark={chartSeries.map((p) => p.impressions)}
+                hint={`${days} дн. · drill-down ниже`}
               />
-              <Kpi
+              <KpiCard
                 label="Клики"
-                value={String(chartMetrics?.clicks ?? view.report.metrics.clicks)}
+                value={(chartMetrics?.clicks ?? view.report.metrics.clicks).toLocaleString("ru-RU")}
+                spark={chartSeries.map((p) => p.clicks)}
+                tone="secondary"
               />
-              <Kpi
+              <KpiCard
                 label="Расход"
                 value={String(chartMetrics?.spend ?? view.report.metrics.spend)}
+                spark={chartSeries.map((p) => p.spend)}
+                hint="из кабинета"
               />
-              <Kpi
+              <KpiCard
                 label={<TermHint term="cpl">CPL / цель</TermHint>}
                 value={`${chartMetrics?.cpl ?? view.report.metrics.cpl ?? "—"} / ${view.report.vs_goal.target_cpl}`}
+                tone={
+                  view.report.vs_goal.status === "worse"
+                    ? "danger"
+                    : view.report.vs_goal.status === "better"
+                      ? "secondary"
+                      : "accent"
+                }
               />
-              <Kpi
+              <KpiCard
                 label="LLM $"
                 value={
                   view.llmUsage
                     ? `$${view.llmUsage.costUsd.toFixed(4)}`
                     : "—"
                 }
+                hint="по project_id · вкладка Расходы"
               />
+            </KpiGrid>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <CplGoalMeter
+                actual={view.report.vs_goal.actual_cpl}
+                target={view.report.vs_goal.target_cpl}
+                status={view.report.vs_goal.status}
+              />
+              <PacingBar pacing={view.pacing} />
             </div>
-            <CplGoalMeter
-              actual={view.report.vs_goal.actual_cpl}
-              target={view.report.vs_goal.target_cpl}
-              status={view.report.vs_goal.status}
-            />
-            <PacingBar pacing={view.pacing} />
             <div className="flex flex-wrap gap-2">
               {CABINET_METRICS.map((item) => (
                 <button
@@ -423,14 +506,26 @@ export function AnalyticsPanel({
                 </button>
               ))}
             </div>
-            <MetricChart
+            <AreaChart
               points={chartSeries.map((point) => ({
                 date: point.date,
                 value: metricValue(point, metric),
               }))}
               label={CABINET_METRICS.find((item) => item.key === metric)?.label ?? metric}
               format={(value) => formatMetric(value, metric)}
+              emptyHint="Графика пока нет — нажмите «Обновить статистику» после показов."
             />
+            {(view.campaigns?.length ?? 0) > 0 && !selectedCampaign ? (
+              <BarChart
+                label="Расход по кампаниям"
+                items={(view.campaigns ?? []).map((c) => ({
+                  id: c.id,
+                  label: c.name,
+                  value: c.metrics.spend,
+                }))}
+                format={(v) => v.toFixed(2)}
+              />
+            ) : null}
             <DrillNav
               campaignName={selectedCampaign?.name ?? null}
               groupName={selectedGroup?.name ?? null}
@@ -443,10 +538,14 @@ export function AnalyticsPanel({
             {!selectedCampaign ? (
               <BreakdownTable
                 caption="Кампании"
+                platform={platform}
                 rows={(view.campaigns ?? []).map((item) => ({
                   id: item.id,
                   name: item.name,
                   metrics: item.metrics,
+                  status: item.status,
+                  source: item.source,
+                  externalCampaignId: item.externalCampaignId,
                 }))}
                 onSelect={(id) => {
                   setCampaignId(id);
@@ -456,6 +555,7 @@ export function AnalyticsPanel({
             ) : (
               <BreakdownTable
                 caption="Группы объявлений"
+                platform={platform}
                 rows={groups.map((item) => ({
                   id: `${item.campaignId}:${item.externalId}`,
                   name: item.name,
@@ -473,14 +573,21 @@ export function AnalyticsPanel({
                 empty="По группам пока только итог кампании — кабинет отдал строки без AdGroupId."
               />
             )}
-            <ul className="list-disc pl-5">
-              {view.report.insights.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <p className="text-xs text-zinc-500">
-              CTR {view.report.metrics.ctr}% · CPC {view.report.metrics.cpc}{" "}
-              · цель CPL {view.report.vs_goal.status}
+            {view.report.insights.length > 0 ? (
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {view.report.insights.map((item) => (
+                  <li
+                    key={item}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/60 px-3 py-2 text-xs text-[var(--fg-muted)]"
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="font-mono text-[11px] text-[var(--fg-faint)]">
+              CTR {view.report.metrics.ctr}% · CPC {view.report.metrics.cpc} ·
+              цель CPL {view.report.vs_goal.status}
             </p>
           </div>
         ) : null}
@@ -552,49 +659,56 @@ export function AnalyticsPanel({
           </button>
         </div>
         {inboundHint ? (
-          <p className="mb-3 text-xs text-zinc-500">{inboundHint}</p>
+          <p className="mb-3 text-xs text-[var(--fg-muted)]">{inboundHint}</p>
         ) : null}
         {attribution?.connections.length ? (
-          <p className="mb-2 text-xs text-zinc-500">
+          <p className="mb-2 text-xs text-[var(--fg-muted)]">
             Подключено:{" "}
             {attribution.connections.map((item) => item.provider).join(", ")}
           </p>
         ) : null}
         {attribution ? (
           <div className="flex flex-col gap-3 text-sm">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Kpi label="Лиды CRM" value={String(attribution.summary.leads)} />
-              <Kpi
+            <KpiGrid cols={4}>
+              <KpiCard label="Лиды CRM" value={String(attribution.summary.leads)} tone="alert" />
+              <KpiCard
                 label="Конверсии кабинета"
                 value={String(attribution.summary.ads_conversions)}
               />
-              <Kpi
+              <KpiCard
                 label={<TermHint term="cpl">Attributed CPL</TermHint>}
                 value={String(attribution.summary.attributed_cpl ?? "—")}
+                tone="secondary"
               />
-              <Kpi
+              <KpiCard
                 label="Цель CPL"
                 value={String(attribution.summary.vs_goal.target_cpl)}
               />
-            </div>
+            </KpiGrid>
             <AttributedCplMeter
               actual={attribution.summary.attributed_cpl}
               target={attribution.summary.vs_goal.target_cpl}
               status={attribution.summary.vs_goal.status}
             />
-            <MetricChart
+            <AreaChart
               points={leads.map((row) => ({ date: row.date, value: row.leads }))}
               label="Лиды CRM по дням"
               format={(value) => String(Math.round(value))}
-              stroke="var(--status-alert-fg)"
+              tone="alert"
+              emptyHint="Лидов за период нет."
             />
-            <ul className="list-disc pl-5">
+            <ul className="grid gap-2 sm:grid-cols-2">
               {attribution.summary.insights.map((item) => (
-                <li key={item}>{item}</li>
+                <li
+                  key={item}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/60 px-3 py-2 text-xs text-[var(--fg-muted)]"
+                >
+                  {item}
+                </li>
               ))}
             </ul>
             {attribution.events.length > 0 ? (
-              <ul className="text-xs text-zinc-600">
+              <ul className="text-xs text-[var(--fg-muted)]">
                 {attribution.events.slice(0, 8).map((item) => (
                   <li key={item.id}>
                     {item.provider} · {item.type} · {item.title}
@@ -603,7 +717,7 @@ export function AnalyticsPanel({
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-zinc-500">Лидов за период нет.</p>
+              <p className="text-xs text-[var(--fg-muted)]">Лидов за период нет.</p>
             )}
           </div>
         ) : null}
@@ -620,22 +734,16 @@ function Spend7dBlock({
   if (!spend7d) return null;
   const label = formatCabinetSpend(spend7d.amount, spend7d.currency);
   return (
-    <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-muted)] px-4 py-3">
-      <p className="text-xs text-[var(--fg-muted)]">Потрачено за 7 дней</p>
-      <p className="text-2xl font-semibold tracking-tight">{label}</p>
-      <p className="mt-1 text-xs text-[var(--fg-muted)]">
+    <div className="ui-kpi">
+      <p className="text-[11px] text-[var(--outline)]">Потрачено за 7 дней</p>
+      <p className="mt-1 font-mono text-3xl font-semibold tracking-tight">{label}</p>
+      <p className="mt-2 border-t border-[var(--border)] pt-2 font-mono text-[11px] text-[var(--fg-faint)]">
         {spend7d.period.from} — {spend7d.period.to} · сумма по кампаниям из
         кабинета
+        {spend7d.amount === 0
+          ? " · нажмите «Обновить статистику» после показов"
+          : ""}
       </p>
-    </div>
-  );
-}
-
-function Kpi({ label, value }: { label: ReactNode; value: string }) {
-  return (
-    <div className="rounded border border-zinc-100 p-2">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="font-medium">{value}</p>
     </div>
   );
 }
@@ -671,13 +779,22 @@ function DrillNav({
 
 function BreakdownTable({
   caption,
+  platform,
   rows,
   selectedId,
   onSelect,
   empty,
 }: {
   caption: string;
-  rows: Array<{ id: string; name: string; metrics: MetricsSummary }>;
+  platform?: string;
+  rows: Array<{
+    id: string;
+    name: string;
+    metrics: MetricsSummary;
+    status?: string;
+    source?: "platform" | "external";
+    externalCampaignId?: string;
+  }>;
   selectedId?: string | null;
   onSelect: (id: string) => void;
   empty?: string;
@@ -708,13 +825,18 @@ function BreakdownTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const cabinetUrl =
+              row.externalCampaignId != null
+                ? cabinetCampaignUrl(platform ?? "yandex_direct", row.externalCampaignId)
+                : null;
+            return (
             <tr
               key={row.id}
               className={
                 selectedId === row.id
                   ? "bg-[var(--status-info-bg)]"
-                  : "hover:bg-zinc-50"
+                  : "hover:bg-[var(--bg-mid)]"
               }
             >
               <td className="py-1 pr-3">
@@ -725,70 +847,44 @@ function BreakdownTable({
                 >
                   {row.name}
                 </button>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {row.source === "external" ? (
+                    <Badge kind="draft">из кабинета</Badge>
+                  ) : row.source === "platform" ? (
+                    <Badge kind="info">платформа</Badge>
+                  ) : null}
+                  {row.status === "archived" ? (
+                    <Badge kind="draft">архив</Badge>
+                  ) : null}
+                </div>
+                {row.externalCampaignId ? (
+                  <p className="mt-1 text-xs text-[var(--fg-muted)]">
+                    ID:{" "}
+                    {cabinetUrl ? (
+                      <a
+                        href={cabinetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono underline-offset-2 hover:underline"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        №{row.externalCampaignId}
+                      </a>
+                    ) : (
+                      <span className="font-mono">№{row.externalCampaignId}</span>
+                    )}
+                  </p>
+                ) : null}
               </td>
               <td className="py-1 pr-3">{row.metrics.impressions}</td>
               <td className="py-1 pr-3">{row.metrics.clicks}</td>
               <td className="py-1 pr-3">{row.metrics.spend}</td>
               <td className="py-1">{row.metrics.cpl ?? "—"}</td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function MetricChart({
-  points,
-  label,
-  format,
-  stroke = "var(--accent)",
-}: {
-  points: Array<{ date: string; value: number }>;
-  label: string;
-  format: (value: number) => string;
-  stroke?: string;
-}) {
-  if (points.length === 0) {
-    return (
-      <p className="text-xs text-zinc-500">
-        {label}: графика пока нет — нажмите «Обновить статистику» после показов.
-      </p>
-    );
-  }
-  const values = points.map((item) => item.value);
-  const max = Math.max(...values, 0);
-  const min = Math.min(...values, 0);
-  const span = max - min || 1;
-  const w = 640;
-  const h = 160;
-  const coords = values.map((value, index) => {
-    const x = values.length === 1 ? w / 2 : (index / (values.length - 1)) * w;
-    const y = h - ((value - min) / span) * (h - 24) - 12;
-    return { x, y };
-  });
-  const polyline = coords.map((item) => `${item.x},${item.y}`).join(" ");
-  const area = `0,${h} ${polyline} ${w},${h}`;
-  const last = points[points.length - 1];
-  return (
-    <div>
-      <p className="mb-1 text-xs text-zinc-500">
-        {label}
-        {last ? ` · ${format(last.value)}` : ""}
-      </p>
-      <svg viewBox={`0 0 ${w} ${h}`} className="h-40 w-full">
-        <polygon points={area} fill={stroke} opacity="0.08" />
-        <polyline
-          fill="none"
-          stroke={stroke}
-          strokeWidth="2.5"
-          points={polyline}
-        />
-      </svg>
-      <div className="flex justify-between text-[11px] text-[var(--fg-muted)]">
-        <span>{points[0]?.date}</span>
-        <span>{points[points.length - 1]?.date}</span>
-      </div>
     </div>
   );
 }
@@ -818,7 +914,7 @@ function PacingBar({
           ? " · прогноз недоступен (нет расхода)"
           : ` · прогноз ${pacing.forecast} ${unit}`}
       </p>
-      <div className="relative h-4 overflow-hidden rounded-full bg-zinc-100">
+      <div className="relative h-4 overflow-hidden rounded-full bg-[var(--bg-high)]">
         {pacing.plan != null ? (
           <div
             className="absolute inset-y-0 left-0 bg-[var(--status-info-bg)]"
@@ -880,7 +976,7 @@ function CplGoalMeter({
           {hasTarget ? ` · цель ${target}` : " · цель не задана в брифе"}
         </span>
       </div>
-      <div className="relative h-3 overflow-hidden rounded-full bg-white/60">
+      <div className="relative h-3 overflow-hidden rounded-full bg-[var(--bg)]/60">
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-current opacity-70"
           style={{ width: `${actualPct}%` }}

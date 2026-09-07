@@ -152,7 +152,7 @@ export function BriefEditor({
 
   if (readOnly && !brief) {
     return (
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-[var(--fg-muted)]">
         Бриф ещё не заполнен. Попросите контекстолога добавить данные проекта.
       </p>
     );
@@ -162,27 +162,27 @@ export function BriefEditor({
     return (
       <dl className="flex flex-col gap-2 text-sm">
         <div>
-          <dt className="text-zinc-500">Сайт</dt>
+          <dt className="text-[var(--fg-muted)]">Сайт</dt>
           <dd>{brief.project.website_url}</dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Гео</dt>
+          <dt className="text-[var(--fg-muted)]">Гео</dt>
           <dd>{brief.project.geo.join(", ")}</dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Бюджет</dt>
+          <dt className="text-[var(--fg-muted)]">Бюджет</dt>
           <dd>
             {brief.project.budget.daily} {brief.project.budget.currency} / день
           </dd>
         </div>
         {brief.project.target_cpl != null ? (
           <div>
-            <dt className="text-zinc-500">Целевой CPL</dt>
+            <dt className="text-[var(--fg-muted)]">Целевой CPL</dt>
             <dd>{brief.project.target_cpl}</dd>
           </div>
         ) : null}
         <div>
-          <dt className="text-zinc-500">УТП</dt>
+          <dt className="text-[var(--fg-muted)]">УТП</dt>
           <dd>
             <ul className="list-disc pl-5">
               {brief.marketing.usp.map((item) => (
@@ -192,13 +192,13 @@ export function BriefEditor({
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Аудитория</dt>
+          <dt className="text-[var(--fg-muted)]">Аудитория</dt>
           <dd>
             {brief.marketing.target_audience.map((item) => item.segment).join(", ")}
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Минус-слова</dt>
+          <dt className="text-[var(--fg-muted)]">Минус-слова</dt>
           <dd>
             {brief.exclusions.global_negative_keywords.length > 0
               ? brief.exclusions.global_negative_keywords.join(", ")
@@ -211,13 +211,13 @@ export function BriefEditor({
 
   return (
     <form onSubmit={(event) => void handleSubmit(event)} className="flex flex-col gap-3">
-      <p className="text-sm text-zinc-600">
+      <p className="text-sm text-[var(--fg-muted)]">
         {brief
           ? "Изменения сохраняются как новая версия брифа. Агенты используют последнюю версию."
           : "Заполните бриф — он нужен для анализа, семантики и генерации объявлений."}
       </p>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500">Сайт</span>
+        <span className="text-[var(--fg-muted)]">Сайт</span>
         <input
           className="ui-input"
           placeholder="https://example.com"
@@ -228,7 +228,7 @@ export function BriefEditor({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500">Гео</span>
+        <span className="text-[var(--fg-muted)]">Гео</span>
         <BeginnerNote term="geo" />
         <input
           className="ui-input"
@@ -241,7 +241,7 @@ export function BriefEditor({
       </label>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-          <span className="text-zinc-500">Дневной бюджет</span>
+          <span className="text-[var(--fg-muted)]">Дневной бюджет</span>
           <input
             className="ui-input"
             type="number"
@@ -253,7 +253,7 @@ export function BriefEditor({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-500">Валюта</span>
+          <span className="text-[var(--fg-muted)]">Валюта</span>
           <input
             className="ui-input"
             value={form.budgetCurrency}
@@ -263,7 +263,7 @@ export function BriefEditor({
         </label>
       </div>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500">Целевой CPL (необязательно)</span>
+        <span className="text-[var(--fg-muted)]">Целевой CPL (необязательно)</span>
         <input
           className="ui-input"
           type="number"
@@ -275,7 +275,7 @@ export function BriefEditor({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500">УТП</span>
+        <span className="text-[var(--fg-muted)]">УТП</span>
         <BeginnerNote term="usp" />
         <textarea
           className="ui-input"
@@ -288,7 +288,7 @@ export function BriefEditor({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500">Аудитория</span>
+        <span className="text-[var(--fg-muted)]">Аудитория</span>
         <textarea
           className="ui-input"
           rows={2}
@@ -300,7 +300,7 @@ export function BriefEditor({
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-500">Минус-слова</span>
+        <span className="text-[var(--fg-muted)]">Минус-слова</span>
         <textarea
           className="ui-input"
           rows={2}

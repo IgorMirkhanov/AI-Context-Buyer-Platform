@@ -4,19 +4,20 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-[var(--accent)] text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50",
+    "border border-transparent bg-[var(--accent)] text-[var(--accent-fg)] shadow-[0_0_18px_color-mix(in_srgb,var(--accent)_45%,transparent)] hover:brightness-110 disabled:opacity-50",
   secondary:
-    "border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--fg)] hover:bg-zinc-50 disabled:opacity-50",
-  ghost: "text-[var(--fg-muted)] hover:text-[var(--fg)] disabled:opacity-50",
+    "border border-[var(--border)] bg-[var(--bg-mid)] text-[var(--fg)] hover:bg-[var(--bg-high)] disabled:opacity-50",
+  ghost:
+    "text-[var(--fg-muted)] hover:bg-[var(--bg-mid)] hover:text-[var(--fg)] disabled:opacity-50",
   danger:
-    "border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)] disabled:opacity-50",
+    "border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)] hover:opacity-90 disabled:opacity-50",
 };
 
 export function btnClass(
   variant: Variant = "primary",
   extra = "",
 ): string {
-  return `inline-flex items-center justify-center rounded-[8px] px-4 py-2 text-sm font-medium transition-opacity ${VARIANTS[variant]} ${extra}`;
+  return `inline-flex items-center justify-center rounded-[8px] px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed ${VARIANTS[variant]} ${extra}`;
 }
 
 export function Button({

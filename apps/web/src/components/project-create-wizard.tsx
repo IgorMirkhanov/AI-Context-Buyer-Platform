@@ -101,8 +101,8 @@ export function ProjectCreateWizard({
           {beginner ? (
             <CardHint>
               Название видно только вам в портфеле. Сайт нужен агенту, чтобы
-              понять оффер. Кабинет подключите на последнем шаге — после
-              создания проекта.
+              понять оффер. Платформу (Яндекс или Google) можно сменить до
+              подключения кабинета. OAuth — на странице проекта после создания.
             </CardHint>
           ) : null}
           <input
@@ -112,14 +112,44 @@ export function ProjectCreateWizard({
             onChange={(e) => setName(e.target.value)}
             required
           />
-          <select
-            className="ui-input"
-            value={primaryPlatform}
-            onChange={(e) => setPrimaryPlatform(e.target.value)}
-          >
-            <option value="yandex_direct">Яндекс Директ</option>
-            <option value="google_ads">Google Ads</option>
-          </select>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(
+              [
+                {
+                  id: "yandex_direct",
+                  title: "Яндекс Директ",
+                  hint: "Основной рынок RU",
+                },
+                {
+                  id: "google_ads",
+                  title: "Google Ads",
+                  hint: "Search / Performance Max",
+                },
+              ] as const
+            ).map((item) => {
+              const active = primaryPlatform === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                    active
+                      ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]"
+                      : "border-[var(--border)] bg-[var(--bg-mid)] hover:bg-[var(--bg-high)]"
+                  }`}
+                  onClick={() => setPrimaryPlatform(item.id)}
+                >
+                  <span className="block text-sm font-medium text-[var(--fg)]">
+                    {item.title}
+                  </span>
+                  <span className="mt-0.5 block font-mono text-[11px] text-[var(--fg-faint)]">
+                    {item.hint}
+                    {active ? " · выбрано" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
           <input
             className="ui-input"
             placeholder="https://example.com"
@@ -197,11 +227,14 @@ export function ProjectCreateWizard({
       {step === 3 ? (
         <>
           <p className="text-sm text-[var(--fg-muted)]">
-            После «Создать» откроется страница проекта. Там нажмите
-            «Подключить Яндекс Директ» или «Подключить Google Ads» — без
-            кабинета агент не сможет собрать семантику из Wordstat и потом
-            выгрузить кампанию. Публикация всё равно только вручную и на
-            паузе.
+            После «Создать» откроется страница проекта. В блоке «Подключение
+            кабинета» выберите{" "}
+            {primaryPlatform === "google_ads"
+              ? "Google Ads"
+              : "Яндекс Директ"}{" "}
+            (при необходимости можно сменить) и нажмите «Подключить». Без
+            кабинета агент не выгрузит кампанию в рекламный API. Публикация
+            всё равно только вручную и на паузе.
           </p>
           <BeginnerNote term="paused" />
         </>

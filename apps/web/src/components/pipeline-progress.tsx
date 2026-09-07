@@ -33,8 +33,7 @@ type TrackStep = {
 const PIPELINE_TRACK: TrackStep[] = [
   { id: "brief", label: "Бриф", tab: "brief" },
   { id: "analysis", label: "Анализ", tab: "analysis" },
-  { id: "semantic", label: "Семантика", tab: "semantic" },
-  { id: "plan", label: "План", tab: "plan" },
+  { id: "plan", label: "Семантика", tab: "plan" },
   { id: "ads", label: "Объявления", tab: "ads" },
   { id: "draft", label: "Черновик", tab: "campaign" },
   { id: "launch", label: "Запуск", tab: "campaign" },
@@ -50,11 +49,11 @@ const STAGE_LABELS: Record<string, string> = {
   idle: "Ожидание брифа",
   brief_submitted: "Бриф принят",
   analysis_in_progress: "Анализ выполняется",
-  analysis_ready: "Анализ готов — нужна семантика",
-  semantic_in_progress: "Семантика собирается",
-  semantic_ready: "Семантика готова",
-  plan_in_progress: "План формируется",
-  plan_ready: "План готов — нужно подтверждение",
+  analysis_ready: "Анализ готов — откройте «План»",
+  semantic_in_progress: "Собираем семантику для плана",
+  semantic_ready: "Семантика готова — проверьте «План»",
+  plan_in_progress: "Формируем структуру кампаний",
+  plan_ready: "План готов — подтвердите «Ок, собирай»",
   copywriting_in_progress: "Пишем объявления",
   validation_in_progress: "Проверка объявлений",
   copy_ready: "Объявления готовы",
@@ -75,15 +74,15 @@ function stageTrackIndex(stage: string): number {
     analysis_ready: 1,
     semantic_in_progress: 2,
     semantic_ready: 2,
-    plan_in_progress: 3,
-    plan_ready: 3,
-    copywriting_in_progress: 4,
-    copy_ready: 4,
-    validation_in_progress: 5,
-    draft_ready: 5,
-    awaiting_approval: 5,
-    launched: 6,
-    live_optimizing: 6,
+    plan_in_progress: 2,
+    plan_ready: 2,
+    copywriting_in_progress: 3,
+    validation_in_progress: 3,
+    copy_ready: 3,
+    draft_ready: 4,
+    awaiting_approval: 4,
+    launched: 5,
+    live_optimizing: 5,
     failed: -1,
   };
   return map[stage] ?? 0;
@@ -96,14 +95,12 @@ function milestoneDone(facts: PipelineFacts, index: number): boolean {
     case 1:
       return facts.hasAnalysis;
     case 2:
-      return facts.hasSemantic;
+      return facts.hasSemantic && facts.hasPlan && facts.planApproved;
     case 3:
-      return facts.hasPlan && facts.planApproved;
-    case 4:
       return facts.hasCreatives;
-    case 5:
+    case 4:
       return facts.hasDraft;
-    case 6:
+    case 5:
       return facts.hasLiveCampaign;
     default:
       return false;
@@ -164,15 +161,15 @@ function resolveStepStatus(
 function stepClass(status: StepStatus): string {
   switch (status) {
     case "done":
-      return "border-emerald-600 bg-emerald-600 text-white";
+      return "border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]";
     case "running":
-      return "border-sky-600 bg-sky-50 text-sky-900 ring-2 ring-sky-300";
+      return "border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)] ring-1 ring-[var(--accent)]/40";
     case "waiting":
-      return "border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-300";
+      return "border-[var(--status-alert-border)] bg-[var(--status-alert-bg)] text-[var(--status-alert-fg)] ring-1 ring-amber-400/30";
     case "next":
-      return "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-fg)]";
+      return "border-[var(--accent)]/50 bg-[var(--bg-high)] text-[var(--fg)] shadow-[0_0_12px_rgba(128,131,255,0.15)]";
     default:
-      return "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--fg-muted)]";
+      return "border-[var(--border)] bg-[var(--bg)]/70 text-[var(--fg-faint)] opacity-80";
   }
 }
 
@@ -241,19 +238,18 @@ export function PipelineProgress({
         : "";
 
   return (
-    <div className="space-y-4">
-      <ol className="flex flex-col gap-0 sm:flex-row sm:flex-wrap sm:items-stretch">
+    <div className="ui-panel relative space-y-4 p-3">
+      <ol className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         {PIPELINE_TRACK.map((step, index) => {
           const status = resolveStepStatus(index, pipeline);
           const badge = stepBadge(status);
           const href = `/projects/${projectId}?tab=${step.tab}`;
-          const showConnector = index < PIPELINE_TRACK.length - 1;
 
           return (
-            <li key={step.id} className="flex min-w-0 flex-1 flex-col sm:flex-row">
+            <li key={step.id} className="min-w-0">
               <Link
                 href={href}
-                className={`flex min-h-[2.75rem] flex-1 flex-col justify-center rounded-[var(--radius)] border px-3 py-2 text-center text-xs font-medium transition hover:opacity-90 ${stepClass(status)}`}
+                className={`flex min-h-[2.75rem] items-center gap-2 rounded border px-2 py-2 text-xs font-medium transition hover:opacity-90 ${stepClass(status)}`}
                 title={
                   status === "waiting"
                     ? "Нужно ваше действие на этой вкладке"
@@ -262,39 +258,32 @@ export function PipelineProgress({
                       : undefined
                 }
               >
-                <span className="flex items-center justify-center gap-1.5">
-                  {badge ? (
-                    <span className="text-[10px] font-bold opacity-80">
-                      {badge}
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current/20 text-[10px] font-bold">
+                  {badge ?? String(index + 1).padStart(2, "0")}
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-mono text-[10px] opacity-70">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="block truncate">{step.label}</span>
+                  {status === "waiting" ? (
+                    <span className="mt-0.5 block text-[10px] font-normal opacity-90">
+                      ваш ход
                     </span>
                   ) : null}
-                  <span>{step.label}</span>
+                  {status === "running" ? (
+                    <span className="mt-0.5 block text-[10px] font-normal opacity-90">
+                      идёт…
+                    </span>
+                  ) : null}
                 </span>
-                {status === "waiting" ? (
-                  <span className="mt-0.5 text-[10px] font-normal opacity-90">
-                    ваш ход
-                  </span>
-                ) : null}
-                {status === "running" ? (
-                  <span className="mt-0.5 text-[10px] font-normal opacity-90">
-                    идёт…
-                  </span>
-                ) : null}
               </Link>
-              {showConnector ? (
-                <span
-                  className="hidden shrink-0 self-center px-1 text-[var(--fg-muted)] sm:inline"
-                  aria-hidden
-                >
-                  →
-                </span>
-              ) : null}
             </li>
           );
         })}
       </ol>
 
-      <div className="rounded-[var(--radius)] border border-[var(--border)] bg-zinc-50 px-3 py-2 text-sm">
+      <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm">
         <p className="font-medium text-[var(--fg)]">
           Сейчас: {stageLabel}
           {queueLabel}
@@ -303,24 +292,24 @@ export function PipelineProgress({
           <p className="mt-1 text-[var(--fg-muted)]">{hint}</p>
         ) : null}
         {pipeline.queue?.status === "failed" ? (
-          <p className="mt-1 text-red-700">
+          <p className="mt-1 text-[var(--status-danger-fg)]">
             Ошибка очереди. Обновите страницу или повторите шаг.
           </p>
         ) : null}
       </div>
 
       <p className="text-xs text-[var(--fg-muted)]">
-        <span className="inline-flex items-center gap-3 flex-wrap">
+        <span className="inline-flex flex-wrap items-center gap-3">
           <span>
-            <span className="inline-block h-2 w-2 rounded-full bg-emerald-600" />{" "}
+            <span className="inline-block h-2 w-2 rounded-full bg-[var(--secondary)]" />{" "}
             готово
           </span>
           <span>
-            <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />{" "}
+            <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent-soft)]" />{" "}
             выполняется
           </span>
           <span>
-            <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />{" "}
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />{" "}
             ждёт вас
           </span>
           <span>

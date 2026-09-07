@@ -12,6 +12,9 @@ import {
   parseTokenEncryptionKey,
 } from '../security/token-encryption';
 import { signOAuthState } from '../security/oauth-state';
+import { ConnectionVerificationFailedError } from './connection-verification.error';
+import { PlatformConnectionService } from '../connectors/platform-connection.service';
+import { DEFAULT_CONNECTION_VERIFY_THROTTLE_MS } from '../connectors/platform-connection.service';
 
 const TEST_KEY =
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -24,17 +27,33 @@ describe('ProjectsService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    projectBrief: { create: jest.fn(), findFirst: jest.fn() },
-    adPlatformCredential: { upsert: jest.fn(), deleteMany: jest.fn() },
+    adPlatformCredential: {
+      upsert: jest.fn(),
+      deleteMany: jest.fn(),
+      update: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    projectBrief: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+    },
     $transaction: jest.fn(),
+  };
+  const platformConnection = {
+    verifyProjectConnection: jest.fn(),
+    throttleMs: jest.fn(() => DEFAULT_CONNECTION_VERIFY_THROTTLE_MS),
   };
   const yandex = {
     buildAuthorizeUrl: jest.fn(),
     handleOAuthCallback: jest.fn(),
+    verifyConnection: jest.fn(),
   };
   const google = {
     buildAuthorizeUrl: jest.fn(),
     handleOAuthCallback: jest.fn(),
+    verifyConnection: jest.fn(),
   };
   const connectors = {
     forPlatform: jest.fn((platform: AdPlatform) =>
@@ -68,6 +87,7 @@ describe('ProjectsService', () => {
           },
         },
         { provide: ConnectorRouter, useValue: connectors },
+        { provide: PlatformConnectionService, useValue: platformConnection },
         {
           provide: AccessService,
           useFactory: () => new AccessService(prisma as unknown as PrismaService),
@@ -242,6 +262,7 @@ describe('ProjectsService', () => {
       scopes: 'direct:api',
       externalAccountId: 'client-login',
     });
+    yandex.verifyConnection.mockResolvedValue({ ok: true });
     prisma.adPlatformCredential.upsert.mockResolvedValue({});
     prisma.project.update.mockResolvedValue({});
 
@@ -261,7 +282,47 @@ describe('ProjectsService', () => {
       'p1',
       'code-from-yandex',
     );
+    expect(yandex.verifyConnection).toHaveBeenCalledWith('p1', {
+      accessToken: 'plain-access',
+      clientLogin: 'client-login',
+      projectId: 'p1',
+    });
     expect(upsert.create.platform).toBe(AdPlatform.yandex_direct);
+    expect(upsert.create.apiVerificationError).toBeNull();
+    expect(upsert.create.apiVerifiedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not mark project active when API verification fails after OAuth', async () => {
+    prisma.project.findFirst.mockResolvedValue({
+      id: 'p1',
+      organizationId: 'org-a',
+      primaryPlatform: AdPlatform.yandex_direct,
+    });
+    yandex.handleOAuthCallback.mockResolvedValue({
+      accessToken: 'plain-access',
+      refreshToken: 'plain-refresh',
+      expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+      scopes: 'login:info',
+      externalAccountId: 'client-login',
+    });
+    yandex.verifyConnection.mockResolvedValue({
+      ok: false,
+      reason: 'Invalid OAuth token',
+    });
+    prisma.adPlatformCredential.upsert.mockResolvedValue({});
+
+    const state = signOAuthState(
+      { projectId: 'p1', organizationId: 'org-a' },
+      'jwt-test',
+    );
+    await expect(
+      service.completeOAuth(state, 'code-from-yandex'),
+    ).rejects.toBeInstanceOf(ConnectionVerificationFailedError);
+
+    const upsert = prisma.adPlatformCredential.upsert.mock.calls[0][0];
+    expect(upsert.create.apiVerificationError).toBe('Invalid OAuth token');
+    expect(upsert.create.apiVerifiedAt).toBeInstanceOf(Date);
+    expect(prisma.project.update).not.toHaveBeenCalled();
   });
 
   it('encrypts Google Ads tokens against the google_ads credential slot', async () => {
@@ -277,6 +338,7 @@ describe('ProjectsService', () => {
       scopes: 'https://www.googleapis.com/auth/adwords',
       externalAccountId: '1234567890',
     });
+    google.verifyConnection.mockResolvedValue({ ok: true });
     prisma.adPlatformCredential.upsert.mockResolvedValue({});
     prisma.project.update.mockResolvedValue({});
 
@@ -315,6 +377,7 @@ describe('ProjectsService', () => {
           },
         },
         { provide: ConnectorRouter, useValue: connectors },
+        { provide: PlatformConnectionService, useValue: platformConnection },
         {
           provide: AccessService,
           useFactory: () => new AccessService(prisma as unknown as PrismaService),
@@ -332,5 +395,204 @@ describe('ProjectsService', () => {
     await mockService.startYandexOAuth('org-a', 'p1');
 
     expect(yandex.buildAuthorizeUrl).toHaveBeenCalled();
+  });
+
+  describe('setPrimaryPlatform', () => {
+    const projectId = 'p1';
+    const organizationId = 'org-a';
+    const now = new Date('2026-09-04T12:00:00.000Z');
+
+    function mockGetAfterSwitch(platform: AdPlatform) {
+      prisma.project.findFirst.mockResolvedValue({
+        id: projectId,
+        organizationId,
+        name: 'Test',
+        status: 'active',
+        primaryPlatform: platform,
+        websiteUrl: null,
+        createdAt: now,
+        updatedAt: now,
+        briefs: [],
+        credentials: [],
+      });
+    }
+
+    it('switches yandex_direct → google_ads when no credential', async () => {
+      prisma.project.findFirst
+        .mockResolvedValueOnce({
+          id: projectId,
+          organizationId,
+          primaryPlatform: AdPlatform.yandex_direct,
+        })
+        .mockResolvedValueOnce({
+          id: projectId,
+          organizationId,
+          name: 'Test',
+          status: 'active',
+          primaryPlatform: AdPlatform.google_ads,
+          websiteUrl: null,
+          createdAt: now,
+          updatedAt: now,
+          briefs: [],
+          credentials: [],
+        });
+      prisma.adPlatformCredential.findFirst.mockResolvedValue(null);
+      prisma.projectBrief.findMany.mockResolvedValue([
+        {
+          id: 'brief-1',
+          payloadJson: {
+            project: { platforms: [AdPlatform.yandex_direct] },
+          },
+        },
+      ]);
+
+      const result = await service.setPrimaryPlatform(
+        organizationId,
+        projectId,
+        AdPlatform.google_ads,
+      );
+
+      expect(prisma.project.update).toHaveBeenCalledWith({
+        where: { id: projectId },
+        data: { primaryPlatform: AdPlatform.google_ads },
+      });
+      expect(prisma.projectBrief.update).toHaveBeenCalledWith({
+        where: { id: 'brief-1' },
+        data: {
+          payloadJson: expect.objectContaining({
+            project: expect.objectContaining({
+              platforms: [AdPlatform.google_ads],
+            }),
+          }),
+        },
+      });
+      expect(result.primaryPlatform).toBe(AdPlatform.google_ads);
+    });
+
+    it('rejects switch while current platform credential exists', async () => {
+      prisma.project.findFirst.mockResolvedValue({
+        id: projectId,
+        organizationId,
+        primaryPlatform: AdPlatform.yandex_direct,
+      });
+      prisma.adPlatformCredential.findFirst.mockResolvedValue({ id: 'cred-1' });
+
+      await expect(
+        service.setPrimaryPlatform(
+          organizationId,
+          projectId,
+          AdPlatform.google_ads,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.project.update).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when platform is already selected', async () => {
+      mockGetAfterSwitch(AdPlatform.google_ads);
+      prisma.project.findFirst.mockResolvedValue({
+        id: projectId,
+        organizationId,
+        name: 'Test',
+        status: 'active',
+        primaryPlatform: AdPlatform.google_ads,
+        websiteUrl: null,
+        createdAt: now,
+        updatedAt: now,
+        briefs: [],
+        credentials: [],
+      });
+
+      const result = await service.setPrimaryPlatform(
+        organizationId,
+        projectId,
+        AdPlatform.google_ads,
+      );
+
+      expect(prisma.adPlatformCredential.findFirst).not.toHaveBeenCalled();
+      expect(prisma.project.update).not.toHaveBeenCalled();
+      expect(result.primaryPlatform).toBe(AdPlatform.google_ads);
+    });
+  });
+
+  describe('getForOrganization connection verify throttle', () => {
+    const projectId = 'p1';
+    const organizationId = 'org-a';
+    const checkedAt = new Date('2026-09-02T12:00:00.000Z');
+    const credential = {
+      platform: AdPlatform.yandex_direct,
+      accessTokenEncrypted: 'enc',
+      externalAccountId: 'mediapeace',
+      apiVerifiedAt: null as Date | null,
+      apiVerificationError: null as string | null,
+      expiresAt: new Date('2027-09-02T00:00:00.000Z'),
+    };
+
+    function mockProject(cred = credential) {
+      prisma.project.findFirst.mockResolvedValue({
+        id: projectId,
+        organizationId,
+        name: 'Test',
+        status: 'active',
+        primaryPlatform: AdPlatform.yandex_direct,
+        websiteUrl: null,
+        createdAt: checkedAt,
+        updatedAt: checkedAt,
+        briefs: [],
+        credentials: [cred],
+      });
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(checkedAt);
+      platformConnection.verifyProjectConnection.mockResolvedValue({
+        ok: false,
+        reason: 'Invalid OAuth token',
+      });
+      prisma.adPlatformCredential.update.mockImplementation(async ({ data }) => ({
+        ...credential,
+        ...data,
+      }));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('verifies on first GET /projects/:id when throttle expired', async () => {
+      mockProject({
+        ...credential,
+        apiVerifiedAt: new Date('2026-09-02T11:00:00.000Z'),
+      });
+      const result = await service.getForOrganization(organizationId, projectId);
+      expect(platformConnection.verifyProjectConnection).toHaveBeenCalledTimes(1);
+      expect(prisma.adPlatformCredential.update).toHaveBeenCalledTimes(1);
+      expect(result.connection.status).toBe('needs_reconnect');
+    });
+
+    it('does not verify again inside throttle window', async () => {
+      mockProject({
+        ...credential,
+        apiVerifiedAt: new Date('2026-09-02T11:50:00.000Z'),
+        apiVerificationError: 'Invalid OAuth token',
+      });
+      jest.setSystemTime(new Date('2026-09-02T12:00:00.000Z'));
+      await service.getForOrganization(organizationId, projectId);
+      await service.getForOrganization(organizationId, projectId);
+      expect(platformConnection.verifyProjectConnection).not.toHaveBeenCalled();
+      expect(prisma.adPlatformCredential.update).not.toHaveBeenCalled();
+    });
+
+    it('verifies again after throttle window passes', async () => {
+      mockProject({
+        ...credential,
+        apiVerifiedAt: new Date('2026-09-02T11:00:00.000Z'),
+        apiVerificationError: 'Invalid OAuth token',
+      });
+      jest.setSystemTime(new Date('2026-09-02T12:16:00.000Z'));
+      await service.getForOrganization(organizationId, projectId);
+      expect(platformConnection.verifyProjectConnection).toHaveBeenCalledTimes(1);
+      expect(prisma.adPlatformCredential.update).toHaveBeenCalledTimes(1);
+    });
   });
 });

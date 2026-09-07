@@ -54,19 +54,61 @@ const GEO_LABELS: Record<string, string> = {
 
 const GEO_PRICE_SUFFIXES = ["цена", "стоимость"] as const;
 
-/**
- * Общеупотребимые intent-модификаторы: при кластеризации hash-n-gram
- * дают ложное сходство между разными продуктами («… официальный сайт»).
- * Снимаются до эмбеддинга; intent на ключе сохраняется отдельно.
- */
-const CLUSTERING_PREFIXES = ["купить "];
+/** Рекламные эпитеты в УТП — не часть поискового ядра. */
+const MARKETING_LEAD =
+  /^(лучший|лучшая|лучшее|лучшие|качественн\w*|профессиональн\w*|над[её]жн\w*|топ)\s+/iu;
+
+/** Услуги/B2B — «купить …» звучит неестественно; лучше «заказать». */
+const SERVICE_BUY_TOKENS = new Set([
+  "установка",
+  "монтаж",
+  "ремонт",
+  "разработка",
+  "разработки",
+  "отдел",
+  "агентство",
+  "клиника",
+  "студия",
+  "запись",
+  "услуги",
+  "услуга",
+  "консультация",
+  "консультации",
+]);
+
+function looksBuyableProduct(service: string): boolean {
+  const tokens = service.split(/\s+/).filter(Boolean);
+  if (tokens.length > 3) return false;
+  // \b не работает с кириллицей в JS — проверяем токены явно.
+  if (
+    tokens.some(
+      (t) =>
+        SERVICE_BUY_TOKENS.has(t) ||
+        /^услуг/u.test(t) ||
+        /^консультац/u.test(t),
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+const CLUSTERING_PREFIXES = ["купить ", "заказать "];
 const CLUSTERING_TAILS = [
   "официальный сайт",
   "отзывы",
   "обзор",
   "цена",
+  "стоимость",
   "заказать",
 ];
+
+/** УТП без маркетингового префикса → маска для Wordstat. */
+export function cleanServiceMask(usp: string): string {
+  let s = normalizeMask(usp);
+  s = s.replace(MARKETING_LEAD, "").trim();
+  return s;
+}
 
 /** Продуктовое ядро фразы для кластеризации (без коммерческих/навиг. хвостов). */
 export function phraseClusteringCore(phrase: string): string {
@@ -132,7 +174,10 @@ function singularizeToken(token: string): string {
   if (/ые$/u.test(token)) {
     return token.replace(/ые$/u, "ой");
   }
-  if (/ки$/u.test(token)) {
+  if (/уки$/u.test(token)) {
+    return token.replace(/уки$/u, "ук");
+  }
+  if (/еты$/u.test(token)) {
     return token.slice(0, -1);
   }
   if (/ы$/u.test(token)) {
@@ -143,6 +188,21 @@ function singularizeToken(token: string): string {
 
 function normalizeMask(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Убирает подряд идущие одинаковые токены («купить купить», «цена цена»). */
+export function collapseConsecutiveDuplicateTokens(phrase: string): string {
+  const tokens = normalizeMask(phrase).split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) {
+    return "";
+  }
+  const collapsed = [tokens[0]];
+  for (let i = 1; i < tokens.length; i += 1) {
+    if (tokens[i] !== collapsed[collapsed.length - 1]) {
+      collapsed.push(tokens[i]);
+    }
+  }
+  return collapsed.join(" ");
 }
 
 /** Производные маски из УТП: сингуляр, хвост «ноутбук asus», бренд, линейка ROG. */
@@ -187,7 +247,7 @@ export function geoLabelFromBriefCode(code: string): string | null {
   return tail;
 }
 
-/** Слитные гео+цена маски: «{услуга} {город} цена», «купить {услуга} {город}». */
+/** Слитные гео+цена маски: «{услуга} {город} цена», «заказать/купить {услуга} {город}». */
 export function combinedGeoCommercialMasks(
   servicePhrases: string[],
   geo: string[],
@@ -205,7 +265,7 @@ export function combinedGeoCommercialMasks(
   const services = [
     ...new Set(
       servicePhrases
-        .map((item) => normalizeMask(item))
+        .map((item) => cleanServiceMask(item))
         .filter((item) => item.length >= 3),
     ),
   ];
@@ -215,7 +275,11 @@ export function combinedGeoCommercialMasks(
       for (const suffix of GEO_PRICE_SUFFIXES) {
         masks.push(`${service} ${city} ${suffix}`);
       }
-      masks.push(`купить ${service} ${city}`);
+      if (looksBuyableProduct(service)) {
+        masks.push(`купить ${service} ${city}`);
+      } else {
+        masks.push(`заказать ${service} ${city}`);
+      }
     }
   }
   return masks;
@@ -234,28 +298,70 @@ export function masksFromBrief(
   };
 
   for (const usp of brief.usp) {
+    push(cleanServiceMask(usp) || usp);
     push(usp);
-    for (const derived of deriveMasksFromUsp(usp)) {
+    for (const derived of deriveMasksFromUsp(cleanServiceMask(usp) || usp)) {
       push(derived);
     }
   }
-  const serviceSeeds = [
-    ...brief.usp,
-    ...brief.usp.flatMap((usp) => deriveMasksFromUsp(usp)),
-  ];
-  for (const combined of combinedGeoCommercialMasks(serviceSeeds, brief.geo)) {
+  for (const combined of combinedGeoCommercialMasks(brief.usp, brief.geo)) {
     push(combined);
   }
   if (brief.product_description) {
     push(brief.product_description.split(/[.!]/)[0] ?? "");
   }
-  for (const token of landingText.split(/[\s,.;:]+/)) {
-    if (token.length > 5) {
-      push(token);
-    }
+  // Не берём каждый токен лендинга (даёт мусор вроде «цветной», «главная»).
+  // Короткие заголовки 2–4 слова — только если похожи на услугу/продукт.
+  for (const phrase of servicePhrasesFromLanding(landingText, brief.usp)) {
+    push(phrase);
   }
 
   return Array.from(new Set(masks)).slice(0, 30);
+}
+
+const LANDING_STOPWORDS = new Set([
+  "главная",
+  "услуги",
+  "контакты",
+  "онас",
+  "о",
+  "нас",
+  "компании",
+  "меню",
+  "вход",
+  "каталог",
+  "подробнее",
+  "заказать",
+  "оставить",
+  "заявку",
+]);
+
+/** Безопасные маски с лендинга: только фразы, пересекающиеся с УТП. */
+export function servicePhrasesFromLanding(
+  landingText: string,
+  uspSeeds: string[] = [],
+): string[] {
+  if (!landingText.trim()) return [];
+  const uspTokens = new Set(
+    uspSeeds
+      .flatMap((u) => cleanServiceMask(u).split(/\s+/))
+      .filter((t) => t.length >= 3),
+  );
+  if (uspTokens.size === 0) return [];
+
+  const out: string[] = [];
+  const chunks = landingText.split(/[\n.!?|;]+/u);
+  for (const chunk of chunks) {
+    const tokens = normalizeMask(chunk)
+      .split(/\s+/)
+      .filter((t) => t.length >= 3 && !LANDING_STOPWORDS.has(t));
+    if (tokens.length < 2 || tokens.length > 4) continue;
+    if (chunk.length > 72) continue;
+    if (!tokens.some((t) => uspTokens.has(t))) continue;
+    out.push(tokens.join(" "));
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 export function phraseMatchesNegatives(
@@ -281,7 +387,20 @@ export function filterKeywordIdeas(
   negatives: string[],
 ): KeywordIdea[] {
   const blocked = [...negatives, ...SERVICE_NEGATIVE_TOKENS];
-  return ideas.filter((idea) => !phraseMatchesNegatives(idea.phrase, blocked));
+  const seen = new Set<string>();
+  const filtered: KeywordIdea[] = [];
+  for (const idea of ideas) {
+    const phrase = collapseConsecutiveDuplicateTokens(idea.phrase);
+    if (!phrase || seen.has(phrase)) {
+      continue;
+    }
+    if (phraseMatchesNegatives(phrase, blocked)) {
+      continue;
+    }
+    seen.add(phrase);
+    filtered.push({ ...idea, phrase });
+  }
+  return filtered;
 }
 
 export function extraNegativesFromBrief(brief: SemanticBriefInput): string[] {

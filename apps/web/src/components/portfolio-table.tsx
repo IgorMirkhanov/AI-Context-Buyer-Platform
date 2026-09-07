@@ -135,60 +135,63 @@ export function PortfolioTable({
   }
 
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-end gap-2">
-        <label className="min-w-44 flex-1 text-xs text-[var(--fg-muted)]">
-          Поиск
-          <input
-            className="ui-input mt-1"
-            placeholder="Поиск по названию"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-        <label className="text-xs text-[var(--fg-muted)]">
-          Статус кампании
-          <select
-            className="ui-input mt-1 w-40"
-            aria-label="Фильтр по статусу"
-            value={campaignStatus}
-            onChange={(e) => setCampaignStatus(e.target.value)}
-          >
-            <option value="all">все</option>
-            <option value="active">активна</option>
-            <option value="paused">пауза</option>
-            <option value="archived">архив</option>
-            <option value="none">нет кампании</option>
-          </select>
-        </label>
-        <label className="text-xs text-[var(--fg-muted)]">
-          Платформа
-          <select
-            className="ui-input mt-1 w-40"
-            aria-label="Фильтр по платформе"
-            value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
-          >
-            <option value="all">все</option>
-            <option value="yandex_direct">Яндекс Директ</option>
-            <option value="google_ads">Google Ads</option>
-          </select>
-        </label>
-        <label className="text-xs text-[var(--fg-muted)]">
-          Алерты
-          <select
-            className="ui-input mt-1 w-40"
-            aria-label="Фильтр по алертам"
-            value={alerts}
-            onChange={(e) => setAlerts(e.target.value)}
-          >
-            <option value="all">все</option>
-            <option value="yes">есть алерты</option>
-            <option value="no">без алертов</option>
-          </select>
-        </label>
+    <div className="ui-panel relative overflow-hidden">
+      <div className="border-b border-[var(--border)] p-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-44 flex-1 text-xs text-[var(--fg-muted)]">
+            Поиск
+            <input
+              className="ui-input mt-1"
+              placeholder="Поиск по названию"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <label className="text-xs text-[var(--fg-muted)]">
+            Статус кампании
+            <select
+              className="ui-input mt-1 w-40"
+              aria-label="Фильтр по статусу"
+              value={campaignStatus}
+              onChange={(e) => setCampaignStatus(e.target.value)}
+            >
+              <option value="all">все</option>
+              <option value="active">активна</option>
+              <option value="paused">пауза</option>
+              <option value="archived">архив</option>
+              <option value="none">нет кампании</option>
+            </select>
+          </label>
+          <label className="text-xs text-[var(--fg-muted)]">
+            Платформа
+            <select
+              className="ui-input mt-1 w-40"
+              aria-label="Фильтр по платформе"
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value)}
+            >
+              <option value="all">все</option>
+              <option value="yandex_direct">Яндекс Директ</option>
+              <option value="google_ads">Google Ads</option>
+            </select>
+          </label>
+          <label className="text-xs text-[var(--fg-muted)]">
+            Алерты
+            <select
+              className="ui-input mt-1 w-40"
+              aria-label="Фильтр по алертам"
+              value={alerts}
+              onChange={(e) => setAlerts(e.target.value)}
+            >
+              <option value="all">все</option>
+              <option value="yes">есть алерты</option>
+              <option value="no">без алертов</option>
+            </select>
+          </label>
+        </div>
       </div>
 
+      <div className="p-3">
       {rows.length === 0 ? (
         <EmptyState
           title={emptyTitle ?? "Создайте первый проект в мастере выше"}
@@ -357,6 +360,7 @@ export function PortfolioTable({
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 }

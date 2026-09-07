@@ -1,14 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, clearToken, getToken } from "@/lib/api";
+import { errorMessage } from "@/lib/api-errors";
 import { DEFAULT_BRANDING, OrgBranding } from "@/lib/branding";
 import { AppShell } from "@/shell/app-shell";
 import { Button } from "@/ui/button";
 import { Card, CardHint, CardTitle } from "@/ui/card";
 import { Alert } from "@/ui/alert";
 import { ErrorState, PageSkeleton } from "@/ui/states";
+import { KpiCard, KpiGrid, PageHeader } from "@/ui/kpi";
 import { PortfolioTable, type PortfolioRow } from "@/components/portfolio-table";
 import { ProjectCreateWizard } from "@/components/project-create-wizard";
 
@@ -46,7 +48,7 @@ export default function ProjectsPage() {
   const [productName, setProductName] = useState("");
   const [slug, setSlug] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
-  const [accentColor, setAccentColor] = useState("#18181b");
+  const [accentColor, setAccentColor] = useState("#8083ff");
   const [hideBadge, setHideBadge] = useState(false);
   const creatingRef = useRef(false);
 
@@ -78,7 +80,7 @@ export default function ProjectsPage() {
         router.replace("/login");
         return;
       }
-      setLoadError(message || "Не удалось загрузить проекты");
+      setLoadError(errorMessage(err, "Не удалось загрузить проекты"));
     });
   }, [router]);
 
@@ -135,6 +137,22 @@ export default function ProjectsPage() {
     }
   }
 
+  const portfolioStats = useMemo(() => {
+    const spend7d = projects.reduce((sum, row) => sum + row.spend7d, 0);
+    const conversions7d = projects.reduce(
+      (sum, row) => sum + row.conversions7d,
+      0,
+    );
+    const alerts = projects.reduce((sum, row) => sum + row.unreadAlerts, 0);
+    const active = projects.filter((row) => row.campaignStatus === "active").length;
+    const withCpl = projects.filter((row) => row.cpl7d != null);
+    const avgCpl =
+      withCpl.length === 0
+        ? null
+        : withCpl.reduce((sum, row) => sum + (row.cpl7d ?? 0), 0) / withCpl.length;
+    return { spend7d, conversions7d, alerts, active, avgCpl, total: projects.length };
+  }, [projects]);
+
   if (loadError && !me) {
     return (
       <main className="mx-auto max-w-lg p-8">
@@ -168,7 +186,41 @@ export default function ProjectsPage() {
       wide
       onLogout={() => router.replace("/login")}
     >
-      <h1 className="mb-4 text-2xl font-semibold">Мои проекты</h1>
+      <PageHeader
+        title="Портфель проектов"
+        description="Клиентские проекты · Яндекс Директ и Google Ads · без автопубликации"
+      />
+
+      <KpiGrid cols={4}>
+        <KpiCard
+          label="Проекты"
+          value={String(portfolioStats.total)}
+          hint={`${portfolioStats.active} активных кампаний`}
+        />
+        <KpiCard
+          label="Расход 7д"
+          value={portfolioStats.spend7d.toLocaleString("ru-RU")}
+          tone="accent"
+          hint="сумма по портфелю"
+        />
+        <KpiCard
+          label="Конверсии 7д"
+          value={String(portfolioStats.conversions7d)}
+          tone="secondary"
+        />
+        <KpiCard
+          label="CPL ср. / алерты"
+          value={`${
+            portfolioStats.avgCpl == null
+              ? "—"
+              : Math.round(portfolioStats.avgCpl).toLocaleString("ru-RU")
+          } · ${portfolioStats.alerts}`}
+          tone={portfolioStats.alerts > 0 ? "alert" : "accent"}
+          hint="среднее CPL · непрочитанные алерты"
+        />
+      </KpiGrid>
+
+      <div className="mt-5" />
 
       {me.role === "owner" ? (
         <Card>
@@ -241,6 +293,10 @@ export default function ProjectsPage() {
                 value={accentColor}
                 onChange={(e) => setAccentColor(e.target.value)}
               />
+              <span className="text-xs text-[var(--fg-muted)]">
+                Слишком тёмный цвет на тёмной теме заменяется на лавандовый
+                акцент интерфейса
+              </span>
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input

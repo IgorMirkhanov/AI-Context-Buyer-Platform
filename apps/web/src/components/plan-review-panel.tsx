@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { isKeywordCommercial } from "@/lib/semantic-keywords";
 import { btnClass } from "@/ui/button";
 import { EmptyState } from "@/ui/states";
-import { TermHint } from "@/ui/term-hint";
+import { TermHint, BeginnerNote } from "@/ui/term-hint";
 
 type SemanticKeyword = {
   phrase: string;
@@ -43,6 +44,7 @@ type Props = {
     clusters: SemanticCluster[];
     negativeSuggestions: NegativeSuggestion[];
   } | null;
+  semanticTask?: { status: string; error: string | null } | null;
   briefNegatives: string[];
   campaignPlan: {
     ready: boolean;
@@ -55,6 +57,10 @@ type Props = {
   readOnly: boolean;
   pending: boolean;
   aiReady: boolean;
+  hasAnalysis: boolean;
+  onRunSemantic: () => void;
+  onExportCsv: () => void;
+  onExportXlsx: () => void;
   onRunPlan: () => void;
   onApprove: () => void;
   onResolveNegative: (
@@ -69,9 +75,7 @@ function commercialKeywords(
   const rows: Array<SemanticKeyword & { clusterName: string }> = [];
   for (const cluster of clusters) {
     for (const kw of cluster.keywords) {
-      if (!isKeywordCommercial(kw)) {
-        continue;
-      }
+      if (!isKeywordCommercial(kw)) continue;
       rows.push({ ...kw, clusterName: cluster.name });
     }
   }
@@ -80,15 +84,22 @@ function commercialKeywords(
 
 export function PlanReviewPanel({
   semantic,
+  semanticTask,
   briefNegatives,
   campaignPlan,
   readOnly,
   pending,
   aiReady,
+  hasAnalysis,
+  onRunSemantic,
+  onExportCsv,
+  onExportXlsx,
   onRunPlan,
   onApprove,
   onResolveNegative,
 }: Props) {
+  const [showAllPhrases, setShowAllPhrases] = useState(false);
+
   const hasSemantic = Boolean(semantic && semantic.clusters.length > 0);
   const keywords = semantic ? commercialKeywords(semantic.clusters) : [];
   const suggestions = semantic?.negativeSuggestions ?? [];
@@ -110,91 +121,188 @@ export function PlanReviewPanel({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <p className="mb-3 text-sm text-zinc-600">
+      <BeginnerNote term="cluster" className="mb-0" />
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/50 px-3 py-2">
+        <p className="text-xs font-medium text-[var(--accent-soft)]">
+          1. Семантика → 2. Структура кампаний → 3. Утверждение
+        </p>
+        <p className="mt-1 text-sm text-[var(--fg-muted)]">
+          {semanticTask
+            ? `Семантика: ${semanticTask.status}${semanticTask.error ? ` · ${semanticTask.error}` : ""}`
+            : hasSemantic
+              ? `Собрано кластеров: ${semantic?.clusters.length ?? 0}`
+              : "Сначала соберите семантику — затем сформируйте структуру и утвердите план."}
           {campaignPlan?.task
-            ? `Задача плана: ${campaignPlan.task.status}${campaignPlan.task.error ? ` · ${campaignPlan.task.error}` : ""}`
+            ? ` · план: ${campaignPlan.task.status}${campaignPlan.task.error ? ` · ${campaignPlan.task.error}` : ""}`
             : planReady
-              ? `Структура: ${campaignPlan?.campaignCount ?? 0} кампаний${campaignPlan?.llmMode ? ` · ${campaignPlan.llmMode}` : ""}`
-              : "Сформируйте план после сбора семантики"}
+              ? ` · структура: ${campaignPlan?.campaignCount ?? 0} кампаний${campaignPlan?.llmMode ? ` · ${campaignPlan.llmMode}` : ""}`
+              : ""}
           {planApproved ? " · утверждён" : ""}
         </p>
-        <button
-          type="button"
-          className={btnClass("secondary")}
-          onClick={onRunPlan}
-          disabled={pending || readOnly || !hasSemantic || !aiReady}
-        >
-          {pending
-            ? "Формируем…"
-            : planReady
-              ? "Пересформировать структуру"
-              : "Сформировать структуру кампаний"}
-        </button>
       </div>
 
-      {!hasSemantic ? (
-        <EmptyState title="Сначала соберите семантику">
-          На вкладке «Семантика» или через пайплайн соберите ядро — здесь
-          появится коммерческий список ключей и минус-слова.
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={btnClass(hasSemantic ? "secondary" : "primary")}
+          onClick={onRunSemantic}
+          disabled={pending || readOnly || !aiReady || !hasAnalysis}
+        >
+          {pending && !hasSemantic
+            ? "Собираем…"
+            : hasSemantic
+              ? "Пересобрать семантику"
+              : "Собрать семантику"}
+        </button>
+        {hasSemantic ? (
+          <>
+            <button
+              type="button"
+              className={btnClass("secondary")}
+              onClick={onExportCsv}
+              disabled={pending}
+            >
+              Экспорт CSV
+            </button>
+            <button
+              type="button"
+              className={btnClass("secondary")}
+              onClick={onExportXlsx}
+              disabled={pending}
+            >
+              Экспорт XLSX
+            </button>
+            <button
+              type="button"
+              className={btnClass("secondary")}
+              onClick={onRunPlan}
+              disabled={pending || readOnly || !aiReady}
+            >
+              {pending
+                ? "Формируем…"
+                : planReady
+                  ? "Пересформировать структуру"
+                  : "Сформировать структуру"}
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      {!hasAnalysis ? (
+        <EmptyState title="Нужен анализ сайта">
+          На вкладке «Анализ» запустите разбор брифа и сайта — без него семантику
+          не собрать.
+        </EmptyState>
+      ) : !hasSemantic ? (
+        <EmptyState title="Семантика ещё не собрана">
+          Нажмите «Собрать семантику» или прогоните пайплайн до черновика. Здесь
+          появятся коммерческие ключи, минус-слова и структура кампаний.
         </EmptyState>
       ) : (
         <>
           <section>
-            <h3 className="mb-2 font-medium">
-              <TermHint term="cluster">Коммерческие ключи</TermHint>{" "}
-              <span className="text-sm font-normal text-zinc-500">
-                ({keywords.length})
-              </span>
-            </h3>
-            <p className="mb-3 text-sm text-zinc-600">
-              Итоговый список для запуска — только коммерческий интент, без
-              обзоров и навигационных запросов.
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h3 className="font-medium">
+                <TermHint term="cluster">Семантическое ядро</TermHint>{" "}
+                <span className="text-sm font-normal text-[var(--fg-muted)]">
+                  · {semantic!.clusters.length} кластер
+                  {semantic!.clusters.length === 1 ? "" : "а"} ·{" "}
+                  {keywords.length} коммерческих фраз
+                </span>
+              </h3>
+              <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-[var(--fg-muted)]">
+                <input
+                  type="checkbox"
+                  checked={showAllPhrases}
+                  onChange={(event) => setShowAllPhrases(event.target.checked)}
+                  className="rounded border-[var(--border-strong)]"
+                />
+                Показать некоммерческие (обзоры, отзывы)
+              </label>
+            </div>
+            <p className="mb-3 text-sm text-[var(--fg-muted)]">
+              Фразы сгруппированы по смыслу (кластеры). В запуск идут только
+              коммерческие — покупка, цена, заказ + гео.
             </p>
-            <div className="max-h-72 overflow-auto rounded border border-zinc-200">
-              <table className="ui-table w-full text-sm">
-                <thead>
-                  <tr className="text-zinc-500">
-                    <th className="py-1 pl-2 pr-2 text-left">Фраза</th>
-                    <th className="py-1 pr-2 text-left">Кластер</th>
-                    <th className="py-1 pr-2 text-left">Интент</th>
-                    <th className="py-1 pr-2 text-right">Частота</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keywords.map((kw) => (
-                    <tr
-                      key={`${kw.clusterName}:${kw.phrase}`}
-                      className="border-t border-zinc-100"
-                    >
-                      <td className="py-1 pl-2 pr-2">{kw.phrase}</td>
-                      <td className="py-1 pr-2 text-zinc-600">
-                        {kw.clusterName}
-                      </td>
-                      <td className="py-1 pr-2">{kw.intent}</td>
-                      <td className="py-1 pr-2 text-right">{kw.frequency}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {keywords.some((kw) => kw.source === "mock_wordstat") ||
+            keywords.every(
+              (kw) => kw.frequency === 1200 || kw.frequency === 900,
+            ) ? (
+              <p className="mb-3 rounded-lg border border-[var(--status-alert-border)] bg-[var(--status-alert-bg)] px-3 py-2 text-xs text-[var(--status-alert-fg)]">
+                Частоты 900/1200 — из mock Wordstat (пока нет живого Wordstat /
+                кабинета). После подключения Директа частоты станут реальными;
+                пересоберите семантику.
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-3">
+              {semantic!.clusters.map((cluster) => {
+                const rows = showAllPhrases
+                  ? cluster.keywords
+                  : cluster.keywords.filter((kw) => isKeywordCommercial(kw));
+                if (rows.length === 0) return null;
+                return (
+                  <article
+                    key={cluster.id}
+                    className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)]/40"
+                  >
+                    <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-mid)] px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium">{cluster.name}</p>
+                        <p className="font-mono text-[11px] text-[var(--fg-faint)]">
+                          {cluster.category} · {rows.length} фраз
+                        </p>
+                      </div>
+                    </header>
+                    <div className="max-h-56 overflow-auto">
+                      <table className="ui-table w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className="text-left">Фраза</th>
+                            <th className="text-left">Интент</th>
+                            <th className="text-right">Частота</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((kw) => (
+                            <tr
+                              key={`${cluster.id}:${kw.phrase}`}
+                              className={
+                                !isKeywordCommercial(kw)
+                                  ? "text-[var(--fg-faint)]"
+                                  : undefined
+                              }
+                            >
+                              <td>{kw.phrase}</td>
+                              <td className="font-mono text-xs">{kw.intent}</td>
+                              <td className="text-right font-mono text-xs">
+                                {kw.frequency}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
 
           <section>
             <h3 className="mb-2 font-medium">Минус-слова</h3>
-            <p className="mb-3 text-sm text-zinc-600">
-              Базовые из брифа и предложенные агентом по собранной семантике.
-              Перед утверждением проверьте предложения — при «Ок, собирай»
-              ожидающие будут приняты в бриф автоматически.
+            <p className="mb-3 text-sm text-[var(--fg-muted)]">
+              Из брифа и предложенные агентом по собранной семантике. При «Ок,
+              собирай» ожидающие предложения попадут в бриф автоматически.
             </p>
             {allMinusWords.length > 0 ? (
               <p className="mb-2 text-sm">
-                <span className="text-zinc-500">В брифе: </span>
+                <span className="text-[var(--fg-muted)]">Итого: </span>
                 {allMinusWords.join(", ")}
               </p>
             ) : (
-              <p className="mb-2 text-sm text-zinc-500">
-                Глобальные минусы брифа не заданы.
+              <p className="mb-2 text-sm text-[var(--fg-muted)]">
+                Глобальные минусы не заданы — агент предложит после сбора
+                семантики.
               </p>
             )}
             {pendingNegatives.length > 0 ? (
@@ -202,12 +310,12 @@ export function PlanReviewPanel({
                 {pendingNegatives.map((item) => (
                   <li
                     key={item.id}
-                    className="flex flex-wrap items-start justify-between gap-2 rounded border border-amber-100 bg-amber-50/60 px-3 py-2 text-sm"
+                    className="flex flex-wrap items-start justify-between gap-2 rounded border border-[var(--status-alert-border)] bg-[var(--status-alert-bg)] px-3 py-2 text-sm"
                   >
                     <div>
                       <p className="font-medium">{item.phrase}</p>
                       {item.reason ? (
-                        <p className="text-xs text-zinc-500">{item.reason}</p>
+                        <p className="text-xs text-[var(--fg-muted)]">{item.reason}</p>
                       ) : null}
                     </div>
                     {!readOnly ? (
@@ -234,7 +342,7 @@ export function PlanReviewPanel({
                 ))}
               </ul>
             ) : suggestions.length > 0 ? (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-[var(--fg-muted)]">
                 Все предложения агента обработаны.
               </p>
             ) : null}
@@ -247,15 +355,15 @@ export function PlanReviewPanel({
                 {campaignPlan.plan.campaigns.map((campaign) => (
                   <div
                     key={campaign.name}
-                    className="rounded border border-zinc-200 bg-zinc-50 p-4 text-sm"
+                    className="rounded border border-[var(--border)] bg-[var(--bg-mid)] p-4 text-sm"
                   >
                     <p className="mb-1 font-medium">{campaign.name}</p>
-                    <p className="mb-2 text-zinc-600">{campaign.rationale}</p>
-                    <ul className="list-disc pl-5 text-zinc-700">
+                    <p className="mb-2 text-[var(--fg-muted)]">{campaign.rationale}</p>
+                    <ul className="list-disc pl-5 text-[var(--fg)]">
                       {campaign.ad_groups.map((group) => (
                         <li key={group.name}>
                           {group.name}
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-xs text-[var(--fg-muted)]">
                             {" "}
                             — кластеры: {group.cluster_names.join(", ")}
                           </span>
@@ -267,19 +375,19 @@ export function PlanReviewPanel({
               </div>
             ) : (
               <EmptyState title="Структура ещё не сформирована">
-                Нажмите «Сформировать структуру кампаний» — агент предложит,
-                сколько кампаний и групп нужно и почему.
+                Нажмите «Сформировать структуру» — агент предложит кампании и
+                группы с обоснованием.
               </EmptyState>
             )}
           </section>
 
           {planReady && !planApproved ? (
-            <div className="rounded border border-emerald-200 bg-emerald-50/50 p-4">
-              <p className="mb-3 text-sm text-zinc-700">
-                Проверьте ключи, минус-слова и структуру. Одной кнопкой
-                утверждаете план и запускаете копирайтинг с черновиком кампании.
+            <div className="rounded border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
+              <p className="mb-3 text-sm text-[var(--fg)]">
+                Проверьте ключи, минус-слова и структуру. «Ок, собирай» утверждает
+                план и запускает объявления с черновиком кампании.
                 {pendingNegatives.length > 0
-                  ? ` ${pendingNegatives.length} предложенных минус-слов будут приняты в бриф.`
+                  ? ` ${pendingNegatives.length} минус-слов будут приняты в бриф.`
                   : ""}
               </p>
               <button
@@ -292,9 +400,8 @@ export function PlanReviewPanel({
               </button>
             </div>
           ) : planApproved ? (
-            <p className="text-sm text-zinc-600">
-              План утверждён. Объявления и черновик — на вкладках «Объявления» и
-              «Кампания».
+            <p className="text-sm text-[var(--fg-muted)]">
+              План утверждён — дальше «Объявления» и «Кампания».
             </p>
           ) : null}
         </>

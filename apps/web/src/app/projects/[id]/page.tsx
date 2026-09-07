@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api, API_URL, clearToken, downloadAuthenticated, getToken } from "@/lib/api";
+import { errorMessage, localizeApiError } from "@/lib/api-errors";
 import { DEFAULT_BRANDING, OrgBranding } from "@/lib/branding";
 import { AiProviderNeeded } from "@/components/ai-provider-needed";
 import { AppShell } from "@/shell/app-shell";
@@ -12,14 +13,22 @@ import { Alert } from "@/ui/alert";
 import { Badge, StatusBadge } from "@/ui/badge";
 import { btnClass, Button } from "@/ui/button";
 import { Card, CardHint, CardTitle } from "@/ui/card";
+import { BarChart, DonutChart } from "@/ui/charts";
+import { KpiCard, KpiGrid } from "@/ui/kpi";
 import { EmptyState, ErrorState, PageSkeleton, Skeleton } from "@/ui/states";
 import { AnalyticsPanel, type AttributionResult, type ReportResult } from "@/components/analytics-panel";
 import { CreativesPanel } from "@/components/creatives-panel";
 import { BriefEditor } from "@/components/brief-editor";
 import { PipelineProgress } from "@/components/pipeline-progress";
-import { NegativeSuggestionsPanel } from "@/components/negative-suggestions-panel";
 import { PlanReviewPanel } from "@/components/plan-review-panel";
-import { isKeywordCommercial } from "@/lib/semantic-keywords";
+import { OptimizationScheduleBanner } from "@/components/optimization-schedule-banner";
+import { ProjectContextPanel } from "@/components/project-context-panel";
+import { formatDateRu } from "@/lib/format-datetime";
+import {
+  buildCampaignRefs,
+  resolveAnalyzedWebsiteUrl,
+} from "@/lib/project-campaign-refs";
+import { cabinetCampaignUrl } from "@/lib/ad-platform-links";
 import { TermHint, BeginnerNote } from "@/ui/term-hint";
 
 type Brief = {
@@ -101,48 +110,8 @@ type CreativesResult = {
   }>;
 };
 
-const INTENT_WHY: Record<string, string> = {
-  hot: "горячий интент — ближе к покупке",
-  warm: "тёплый интент — сравнение и выбор",
-  navigational: "навигационный интент — бренд или сайт",
-};
-
-const KEYWORD_SOURCE_LABEL: Record<string, string> = {
-  mock_wordstat: "Wordstat",
-  wordstat: "Wordstat",
-  google_keyword_planner: "Google KP",
-  llm_near_intent: "предложено ИИ",
-  llm_seed_expand: "предложено ИИ",
-};
-
-function keywordSourceLabel(source: string): string {
-  return KEYWORD_SOURCE_LABEL[source] ?? source;
-}
-
-function isAiSuggestedKeyword(source: string): boolean {
-  return source === "llm_near_intent" || source === "llm_seed_expand";
-}
-
-function keywordWhy(kw: { intent: string; source: string }): string {
-  const intent = INTENT_WHY[kw.intent] ?? `интент: ${kw.intent}`;
-  return intent;
-}
-
 function platformTitle(platform: string): string {
   return platform === "google_ads" ? "Google Ads" : "Яндекс Директ";
-}
-
-function localizeApiError(message: string): string {
-  if (
-    message === "Publish a campaign first" ||
-    message.includes("опубликуйте кампанию")
-  ) {
-    return "Сначала опубликуйте кампанию на вкладке «Кампания». Кабинет уже подключён — статистика появится после запуска.";
-  }
-  if (message === "Collect performance snapshots first") {
-    return "Сначала обновите статистику на вкладке «Аналитика» — нужны снимки из рекламного кабинета.";
-  }
-  return message;
 }
 
 type CampaignPlanResult = {
@@ -198,6 +167,9 @@ type CampaignsResult = {
     id: string;
     externalCampaignId: string;
     status: string;
+    source?: "platform" | "external";
+    name?: string | null;
+    draftUnitIndex?: number | null;
     budget: string | number | null;
   }>;
 };
@@ -205,6 +177,9 @@ type CampaignsResult = {
 type OptimizationResult = {
   task: { status: string; error: string | null } | null;
   autopilot: boolean;
+  optimizationLaunchedAt?: string | null;
+  optimizationLastRunAt?: string | null;
+  optimizationNextRunAt?: string | null;
   eligibility?: {
     eligible: boolean;
     reasons: string[];
@@ -220,6 +195,7 @@ type OptimizationResult = {
     type: string;
     status: string;
     rationale: string;
+    evidence?: Record<string, unknown> | null;
     error: string | null;
     appliedBy?: string | null;
     campaignExternalId: string;
@@ -253,10 +229,11 @@ type ProjectDetails = {
   websiteUrl: string | null;
   brief: Brief | null;
   connection: {
-    status: "connected" | "not_connected";
+    status: "connected" | "not_connected" | "needs_reconnect";
     platform: string;
     externalAccountId: string | null;
     expiresAt: string | null;
+    verificationError: string | null;
   };
 };
 
@@ -394,10 +371,16 @@ function ProjectPageInner() {
   const router = useRouter();
   const search = useSearchParams();
   const tab = parseProjectTab(search.get("tab"));
+  useEffect(() => {
+    if (search.get("tab") === "semantic") {
+      const query = new URLSearchParams(search.toString());
+      query.set("tab", "plan");
+      router.replace(`/projects/${params.id}?${query.toString()}`);
+    }
+  }, [params.id, router, search]);
   const [project, setProject] = useState<ProjectDetails | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [semantic, setSemantic] = useState<SemanticResult | null>(null);
-  const [semanticCommercialOnly, setSemanticCommercialOnly] = useState(true);
   const [campaignPlan, setCampaignPlan] = useState<CampaignPlanResult | null>(null);
   const [creatives, setCreatives] = useState<CreativesResult | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignsResult | null>(null);
@@ -523,7 +506,7 @@ function ProjectPageInner() {
         router.replace("/login");
         return;
       }
-      setLoadError(message || "Не удалось загрузить проект");
+      setLoadError(errorMessage(err, "Не удалось загрузить проект"));
     });
   }, [load, router]);
 
@@ -541,6 +524,26 @@ function ProjectPageInner() {
       setCustomSeedsText(analysis.customSeeds.join("\n"));
     }
   }, [analysis?.customSeeds]);
+
+  async function setProjectPlatform(platform: "yandex_direct" | "google_ads") {
+    setError(null);
+    setPending(true);
+    try {
+      const data = await api<ProjectDetails>(`/projects/${params.id}/platform`, {
+        method: "PATCH",
+        body: JSON.stringify({ primaryPlatform: platform }),
+      });
+      setProject(data);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось сменить рекламную платформу",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function connectPlatform() {
     setError(null);
@@ -1117,7 +1120,15 @@ function ProjectPageInner() {
         branding={DEFAULT_BRANDING}
         onLogout={() => router.replace("/login")}
       >
-        <ErrorState message={loadError} onRetry={() => void load()} />
+        <div className="mx-auto flex max-w-lg flex-col gap-3 pt-8">
+          <ErrorState message={loadError} onRetry={() => void load()} />
+          <Link
+            href="/projects"
+            className="text-center text-sm text-[var(--fg-muted)] underline-offset-2 hover:underline"
+          >
+            ← Вернуться к портфелю
+          </Link>
+        </div>
       </AppShell>
     );
   }
@@ -1141,9 +1152,22 @@ function ProjectPageInner() {
   }
 
   const connected = project.connection.status === "connected";
-  const hasPublishedCampaigns = (campaigns?.campaigns.length ?? 0) > 0;
+  const needsReconnect = project.connection.status === "needs_reconnect";
+  const hasPlatformCampaigns =
+    campaigns?.campaigns.some((item) => item.source !== "external") ?? false;
+  const hasAnyCampaigns = (campaigns?.campaigns.length ?? 0) > 0;
   const hasCampaignDraft = Boolean(campaigns?.draft);
   const brief = project.brief;
+  const analyzedWebsiteUrl = resolveAnalyzedWebsiteUrl({
+    briefWebsiteUrl: brief?.project.website_url,
+    analysisWebsiteUrl: analysis?.websiteUrl,
+    projectWebsiteUrl: project.websiteUrl,
+  });
+  const campaignRefs = buildCampaignRefs({
+    draftUnits: campaigns?.draft?.structureJson.campaigns,
+    liveCampaigns: campaigns?.campaigns,
+    plannedNames: campaignPlan?.plan?.campaigns.map((item) => item.name),
+  });
   const readOnly = me?.canWrite === false;
   const branding = me?.branding ?? DEFAULT_BRANDING;
   const beginnerMode = me?.beginnerMode !== false;
@@ -1164,6 +1188,7 @@ function ProjectPageInner() {
       beginnerMode={beginnerMode}
       onBeginnerModeChange={setBeginnerMode}
       onLogout={() => router.replace("/login")}
+      wide
     >
       {opsAlerts && opsAlerts.alerts.length > 0 ? (
         <Alert tone="alert" className="mb-4" title="Оповещения">
@@ -1212,6 +1237,26 @@ function ProjectPageInner() {
           {platformTitle(project.primaryPlatform)} подключён.
         </Alert>
       ) : null}
+      {oauthFlag === "needs_reconnect" ? (
+        <Alert tone="danger" className="mb-4" title="Подключение не завершено">
+          Нужны права на управление кампаниями — переподключите кабинет{" "}
+          {platformTitle(project.primaryPlatform)}.
+          {project.connection.verificationError ? (
+            <span className="mt-1 block text-xs opacity-80">
+              {project.connection.verificationError}
+            </span>
+          ) : null}
+        </Alert>
+      ) : null}
+      {needsReconnect && oauthFlag !== "needs_reconnect" ? (
+        <Alert tone="danger" className="mb-4" title="Требуется переподключение">
+          Подключение к {platformTitle(project.primaryPlatform)} перестало работать
+          {project.connection.verificationError
+            ? `: ${project.connection.verificationError}`
+            : ""}
+          . Переподключите кабинет, чтобы снова синхронизировать кампании и статистику.
+        </Alert>
+      ) : null}
       {oauthFlag === "error" ? (
         <Alert tone="danger" className="mb-4">
           Не удалось подключить {platformTitle(project.primaryPlatform)}.
@@ -1220,13 +1265,16 @@ function ProjectPageInner() {
       ) : null}
 
       <Card>
-        <CardTitle>Пайплайн</CardTitle>
-        <CardHint>
-          «Прогнать пайплайн до черновика» проходит все этапы автоматически до
-          готового черновика. «Отменить и доработать» сбрасывает черновик и
-          останавливает очередь — после правок на вкладках снова нажмите
-          «Прогнать».
-        </CardHint>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle>Пайплайн до черновика</CardTitle>
+            <CardHint>
+              Детерминированная очередь: бриф → анализ → план → объявления → черновик.
+              «Прогнать пайплайн» проходит этапы автоматически. Публикация — только
+              явным «Запустить кампанию».
+            </CardHint>
+          </div>
+        </div>
         <PipelineProgress projectId={params.id} pipeline={pipeline} />
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
@@ -1260,29 +1308,109 @@ function ProjectPageInner() {
       </Card>
 
       <Card>
-        <CardTitle>Подключение кабинета</CardTitle>
-        <p className="text-sm text-[var(--fg-muted)]">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Подключение кабинета</CardTitle>
+          <span className="font-mono text-[11px] text-[var(--outline)]">
+            <span
+              className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+                connected
+                  ? "bg-[var(--secondary)]"
+                  : needsReconnect
+                    ? "bg-[var(--status-alert-fg)]"
+                    : "bg-[var(--fg-faint)]"
+              }`}
+            />
+            {connected
+              ? "online"
+              : needsReconnect
+                ? "needs_reconnect"
+                : "offline"}
+          </span>
+        </div>
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
+          Платформа проекта:{" "}
+          <span className="font-medium text-[var(--fg)]">
+            {platformTitle(project.primaryPlatform)}
+          </span>
           {connected
-            ? `Подключено · ${project.connection.externalAccountId ?? "аккаунт"}`
-            : "Кабинет не подключён"}
+            ? ` · ${project.connection.externalAccountId ?? "аккаунт"}`
+            : needsReconnect
+              ? " · подключение не завершено — нужны права API"
+              : " · кабинет не подключён"}
           {connected && project.connection.expiresAt
             ? ` · до ${new Date(project.connection.expiresAt).toLocaleString("ru-RU")}`
             : ""}
         </p>
-        {connected && !hasPublishedCampaigns ? (
+        {!connected && !needsReconnect && !readOnly ? (
+          <div className="mb-3 grid gap-2 sm:grid-cols-2">
+            {(
+              [
+                {
+                  id: "yandex_direct" as const,
+                  title: "Яндекс Директ",
+                  hint: "OAuth + Direct API",
+                },
+                {
+                  id: "google_ads" as const,
+                  title: "Google Ads",
+                  hint: "OAuth + Google Ads API",
+                },
+              ] as const
+            ).map((item) => {
+              const active = project.primaryPlatform === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={pending}
+                  className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                    active
+                      ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] shadow-[0_0_12px_color-mix(in_srgb,var(--accent)_25%,transparent)]"
+                      : "border-[var(--border)] bg-[var(--bg-mid)] hover:bg-[var(--bg-high)]"
+                  }`}
+                  onClick={() => {
+                    if (!active) void setProjectPlatform(item.id);
+                  }}
+                >
+                  <span className="block text-sm font-medium text-[var(--fg)]">
+                    {item.title}
+                  </span>
+                  <span className="mt-0.5 block font-mono text-[11px] text-[var(--fg-faint)]">
+                    {item.hint}
+                    {active ? " · выбрано" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        {needsReconnect ? (
+          <p className="mt-2 text-sm text-[var(--fg-muted)]">
+            Токен получен, но API рекламного кабинета не отвечает. Переподключите
+            аккаунт с нужными правами.
+            {project.connection.verificationError ? (
+              <span className="mt-1 block text-xs opacity-80">
+                {project.connection.verificationError}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+        {connected && !hasPlatformCampaigns && !hasAnyCampaigns ? (
           <p className="mt-2 text-sm text-[var(--fg-muted)]">
             {hasCampaignDraft
               ? "Черновик кампании готов — для статистики откройте вкладку «Кампания» и нажмите «Запустить кампанию»."
               : "Для статистики сначала соберите и опубликуйте кампанию."}
           </p>
         ) : null}
-        <div className="mt-3 flex gap-2">
-          {!connected ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {!connected || needsReconnect ? (
             <Button
               onClick={connectPlatform}
               disabled={pending || readOnly}
             >
-              Подключить {platformTitle(project.primaryPlatform)}
+              {needsReconnect
+                ? `Переподключить ${platformTitle(project.primaryPlatform)}`
+                : `Подключить ${platformTitle(project.primaryPlatform)}`}
             </Button>
           ) : (
             <>
@@ -1303,12 +1431,18 @@ function ProjectPageInner() {
             </>
           )}
         </div>
+        {!connected && project.primaryPlatform === "google_ads" ? (
+          <p className="mt-3 font-mono text-[11px] text-[var(--fg-faint)]">
+            Нужны GOOGLE_ADS_CLIENT_ID / SECRET / DEVELOPER_TOKEN в .env, либо
+            GOOGLE_ADS_MOCK=1 для локального callback без Google.
+          </p>
+        ) : null}
       </Card>
 
       {tab === "audit" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+      <section className="ui-panel relative mb-4 p-4">
         <h2 className="mb-2 font-medium">Журнал записей в кабинет</h2>
-        <p className="mb-3 text-sm text-zinc-600">
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           Кто и когда менял кампании в Директе или Google Ads. Токены не
           сохраняются.
         </p>
@@ -1316,7 +1450,7 @@ function ProjectPageInner() {
           <div className="overflow-x-auto">
             <table className="ui-table">
               <thead>
-                <tr className="text-zinc-500">
+                <tr className="text-[var(--fg-muted)]">
                   <th className="py-1 pr-2">Когда</th>
                   <th className="py-1 pr-2">Кто</th>
                   <th className="py-1 pr-2">Действие</th>
@@ -1326,7 +1460,7 @@ function ProjectPageInner() {
               </thead>
               <tbody>
                 {auditLog.items.map((row) => (
-                  <tr key={row.id} className="border-t border-zinc-100 align-top">
+                  <tr key={row.id} className="border-t border-[var(--border)] align-top">
                     <td className="py-2 pr-2 whitespace-nowrap">
                       {new Date(row.createdAt).toLocaleString("ru-RU")}
                     </td>
@@ -1340,7 +1474,7 @@ function ProjectPageInner() {
                     <td className="py-2 pr-2">
                       {row.status === "failed" ? "ошибка" : "успех"}
                     </td>
-                    <td className="py-2 text-xs text-zinc-600">
+                    <td className="py-2 text-xs text-[var(--fg-muted)]">
                       {row.error ??
                         (row.summary ? JSON.stringify(row.summary) : "—")}
                     </td>
@@ -1360,70 +1494,88 @@ function ProjectPageInner() {
       ) : null}
 
       {tab === "spend" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
-        <h2 className="mb-2 font-medium">Расходы LLM</h2>
-        <p className="mb-3 text-sm text-zinc-600">
+      <Card>
+        <CardTitle>Расходы LLM</CardTitle>
+        <CardHint>
           Вызовы моделей по этому проекту. Полный промпт в UI не показывается,
           токены и ключи вырезаются.
-        </p>
+        </CardHint>
         {llmUsage && llmUsage.summary.calls > 0 ? (
           <>
-            <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div className="rounded border border-zinc-100 p-2">
-                <p className="text-xs text-zinc-500">Вызовы</p>
-                <p className="font-medium">{llmUsage.summary.calls}</p>
-              </div>
-              <div className="rounded border border-zinc-100 p-2">
-                <p className="text-xs text-zinc-500">Стоимость</p>
-                <p className="font-medium">
-                  ${llmUsage.summary.costUsd.toFixed(4)}
-                </p>
-              </div>
-              <div className="rounded border border-zinc-100 p-2">
-                <p className="text-xs text-zinc-500">Вход</p>
-                <p className="font-medium">{llmUsage.summary.inputTokens}</p>
-              </div>
-              <div className="rounded border border-zinc-100 p-2">
-                <p className="text-xs text-zinc-500">Выход</p>
-                <p className="font-medium">{llmUsage.summary.outputTokens}</p>
-              </div>
+            <KpiGrid cols={4}>
+              <KpiCard label="Вызовы" value={String(llmUsage.summary.calls)} />
+              <KpiCard
+                label="Стоимость"
+                value={`$${llmUsage.summary.costUsd.toFixed(4)}`}
+                tone="accent"
+              />
+              <KpiCard
+                label="Вход"
+                value={llmUsage.summary.inputTokens.toLocaleString("ru-RU")}
+              />
+              <KpiCard
+                label="Выход"
+                value={llmUsage.summary.outputTokens.toLocaleString("ru-RU")}
+                tone="secondary"
+              />
+            </KpiGrid>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {llmUsage.summary.byAgent.length > 0 ? (
+                <BarChart
+                  label="Стоимость по агентам ($)"
+                  items={llmUsage.summary.byAgent.map((row) => ({
+                    id: row.agentType,
+                    label: LLM_AGENT[row.agentType] ?? row.agentType,
+                    value: row.costUsd,
+                  }))}
+                  format={(v) => `$${v.toFixed(4)}`}
+                />
+              ) : null}
+              {llmUsage.summary.byAgent.length > 0 ? (
+                <DonutChart
+                  centerLabel="вызовы"
+                  centerValue={String(llmUsage.summary.calls)}
+                  segments={llmUsage.summary.byAgent.map((row, index) => ({
+                    id: row.agentType,
+                    label: LLM_AGENT[row.agentType] ?? row.agentType,
+                    value: row.calls,
+                    color: [
+                      "var(--accent)",
+                      "var(--secondary)",
+                      "var(--status-alert-fg)",
+                      "var(--accent-soft)",
+                      "#7dd3fc",
+                    ][index % 5],
+                  }))}
+                />
+              ) : null}
             </div>
-            {llmUsage.summary.byAgent.length > 0 ? (
-              <ul className="mb-4 text-sm text-zinc-600">
-                {llmUsage.summary.byAgent.map((row) => (
-                  <li key={row.agentType}>
-                    {LLM_AGENT[row.agentType] ?? row.agentType}: {row.calls} · $
-                    {row.costUsd.toFixed(4)}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <div className="overflow-x-auto">
+            <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)]">
               <table className="ui-table">
                 <thead>
-                  <tr className="text-zinc-500">
-                    <th className="py-1 pr-2">Когда</th>
-                    <th className="py-1 pr-2">Агент</th>
-                    <th className="py-1 pr-2">Модель</th>
-                    <th className="py-1 pr-2">$</th>
-                    <th className="py-1">Превью</th>
+                  <tr>
+                    <th>Когда</th>
+                    <th>Агент</th>
+                    <th>Модель</th>
+                    <th>$</th>
+                    <th>Превью</th>
                   </tr>
                 </thead>
                 <tbody>
                   {llmUsage.recent.map((row) => (
-                    <tr key={row.id} className="border-t border-zinc-100 align-top">
-                      <td className="py-2 pr-2 whitespace-nowrap">
+                    <tr key={row.id} className="align-top">
+                      <td className="whitespace-nowrap font-mono text-xs">
                         {new Date(row.createdAt).toLocaleString("ru-RU")}
                       </td>
-                      <td className="py-2 pr-2">
+                      <td>
                         {LLM_AGENT[row.agentType] ?? row.agentType}
-                        <span className="block text-xs text-zinc-400">
+                        <span className="block text-xs text-[var(--fg-faint)]">
                           {row.step}
                         </span>
                       </td>
-                      <td className="py-2 pr-2">{row.model}</td>
-                      <td className="py-2 pr-2">${row.costUsd.toFixed(4)}</td>
-                      <td className="py-2 text-xs text-zinc-600">
+                      <td className="font-mono text-xs">{row.model}</td>
+                      <td className="font-mono text-xs">${row.costUsd.toFixed(4)}</td>
+                      <td className="text-xs text-[var(--fg-muted)]">
                         {row.promptPreview || "—"}
                       </td>
                     </tr>
@@ -1439,16 +1591,16 @@ function ProjectPageInner() {
             пайплайн до черновика» в шапке проекта.
           </EmptyState>
         )}
-      </section>
+      </Card>
       ) : null}
 
       {tab === "brief" && me?.canWrite ? (
-        <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+        <section className="ui-panel relative mb-4 p-4">
           <h2 className="mb-2 font-medium">Доступ к проекту</h2>
           {me.role === "owner" ? (
             <>
               <h3 className="mb-1 text-sm font-medium">Контекстолог агентства</h3>
-              <p className="mb-3 text-sm text-zinc-600">
+              <p className="mb-3 text-sm text-[var(--fg-muted)]">
                 Видит только назначенные проекты в портфеле, но может собирать
                 семантику, объявления и запускать кампании на паузе — как
                 владелец на этих кабинетах.
@@ -1477,7 +1629,7 @@ function ProjectPageInner() {
             </>
           ) : null}
           <h3 className="mb-1 text-sm font-medium">Субклиент (только просмотр)</h3>
-          <p className="mb-3 text-sm text-zinc-600">
+          <p className="mb-3 text-sm text-[var(--fg-muted)]">
             Клиент видит только этот проект и не может публиковать кампании.
           </p>
           <div className="mb-3 flex flex-wrap gap-2">
@@ -1506,7 +1658,7 @@ function ProjectPageInner() {
               {clientAccess.map((item) => (
                 <li
                   key={item.userId}
-                  className="flex items-center justify-between gap-2 border-t border-zinc-100 py-1"
+                  className="flex items-center justify-between gap-2 border-t border-[var(--border)] py-1"
                 >
                   <span>
                     {item.email} · {accessRoleLabel(item.role)}
@@ -1522,7 +1674,7 @@ function ProjectPageInner() {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-zinc-500">Пока никого не приглашали</p>
+            <p className="text-sm text-[var(--fg-muted)]">Пока никого не приглашали</p>
           )}
           </section>
       ) : null}
@@ -1545,19 +1697,24 @@ function ProjectPageInner() {
         onConnectAttribution={connectAttribution}
         onCollectAttribution={collectAttribution}
         cabinetConnected={connected}
-        hasPublishedCampaigns={hasPublishedCampaigns}
+        cabinetNeedsReconnect={needsReconnect}
+        hasPlatformCampaigns={hasPlatformCampaigns}
+        hasAnyCampaigns={hasAnyCampaigns}
         hasCampaignDraft={hasCampaignDraft}
         reportError={reportError}
+        analyzedWebsiteUrl={analyzedWebsiteUrl}
+        platform={project.primaryPlatform}
+        campaignRefs={campaignRefs}
       />
       ) : null}
 
       {tab === "recs" || tab === "autopilot" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+      <section className="ui-panel relative mb-4 p-4">
         <h2 className="mb-2 font-medium">Рекомендации</h2>
         {tab === "autopilot" ? (
           <h3 className="mb-2 text-sm font-semibold">Автопилот</h3>
         ) : null}
-        <p className="mb-3 text-sm text-zinc-600">
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           {optimization?.autopilot
             ? "Автопилот включён для этого проекта: пауза, урезание бюджета и минус-слова уходят в кабинет без второго клика. Новые кампании автопилот не публикует."
             : "Автопилот выключен. Агент только предлагает действия по цифрам статистики; в кабинет они попадают после «Принять» и «Применить»."}
@@ -1566,8 +1723,8 @@ function ProjectPageInner() {
             : ""}
         </p>
         {optimization?.eligibility ? (
-          <div className="mb-3 rounded border border-zinc-100 p-3 text-sm">
-            <p className="text-xs text-zinc-500">
+          <div className="mb-3 rounded border border-[var(--border)] p-3 text-sm">
+            <p className="text-xs text-[var(--fg-muted)]">
               Порог автопилота: разобрано{" "}
               {optimization.eligibility.stats.reviewed} · применено{" "}
               {optimization.eligibility.stats.applied} · доля{" "}
@@ -1580,7 +1737,7 @@ function ProjectPageInner() {
                 Качество рекомендаций достаточное, чтобы включить автопилот.
               </Alert>
             ) : (
-              <ul className="mt-1 list-disc pl-5 text-zinc-600">
+              <ul className="mt-1 list-disc pl-5 text-[var(--fg-muted)]">
                 {optimization.eligibility.reasons.map((reason) => (
                   <li key={reason}>{reason}</li>
                 ))}
@@ -1626,28 +1783,50 @@ function ProjectPageInner() {
             )}
           </div>
         ) : null}
+        <OptimizationScheduleBanner
+          projectId={params.id}
+          launchedAt={optimization?.optimizationLaunchedAt ?? null}
+          lastRunAt={optimization?.optimizationLastRunAt ?? null}
+          nextRunAt={optimization?.optimizationNextRunAt ?? null}
+          hasPublishedCampaigns={hasPlatformCampaigns}
+        />
         <button
           className={btnClass("primary", "mb-4")}
           onClick={runOptimization}
           disabled={pending || readOnly || !aiReady}
         >
-          {pending ? "Считаем…" : "Построить рекомендации"}
+          {pending ? "Считаем…" : "Построить рекомендации сейчас"}
         </button>
         {optimization && optimization.recommendations.length > 0 ? (
           <ul className="flex flex-col gap-3 text-sm">
             {optimization.recommendations.map((item) => (
               <li
                 key={item.id}
-                className="rounded border border-zinc-100 p-3"
+                className="rounded border border-[var(--border)] p-3"
               >
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-[var(--fg-muted)]">
                   {item.type} · {item.status}
                   {item.appliedBy ? ` · ${item.appliedBy}` : ""} · кампания{" "}
                   {item.campaignExternalId}
                 </p>
                 <p className="mt-1">{item.rationale}</p>
+                {item.evidence &&
+                typeof item.evidence === "object" &&
+                "period_from" in item.evidence &&
+                "period_to" in item.evidence ? (
+                  <p className="mt-1 text-xs text-[var(--fg-muted)]">
+                    Период: {formatDateRu(String(item.evidence.period_from))} —{" "}
+                    {formatDateRu(String(item.evidence.period_to))}
+                    {"spend" in item.evidence
+                      ? ` · расход ${String(item.evidence.spend)}`
+                      : ""}
+                    {"ctr" in item.evidence
+                      ? ` · CTR ${String(item.evidence.ctr)}%`
+                      : ""}
+                  </p>
+                ) : null}
                 {item.error ? (
-                  <p className="mt-1 text-red-700">{item.error}</p>
+                  <p className="mt-1 text-[var(--status-danger-fg)]">{item.error}</p>
                 ) : null}
                 {!optimization.autopilot ? (
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -1684,23 +1863,31 @@ function ProjectPageInner() {
             ))}
           </ul>
         ) : (
-          <EmptyState title="Сначала обновите статистику в «Аналитике»">
-            Рекомендации строятся по снимкам кабинета. Откройте вкладку
-            «Аналитика», нажмите «Обновить статистику», затем вернитесь и
-            нажмите «Построить рекомендации».
+          <EmptyState title="Рекомендации появятся автоматически">
+            После публикации кампании агент проверит статистику по расписанию.
+            Для внепланового прогона нажмите кнопку выше — нужны снимки из
+            кабинета на вкладке «Аналитика».
           </EmptyState>
         )}
       </section>
       ) : null}
 
       {tab === "analysis" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+      <section className="ui-panel relative mb-4 p-4">
         <h2 className="mb-2 font-medium">Анализ сайта и брифа</h2>
-        <p className="mb-3 text-sm text-zinc-600">
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           Перед сбором семантики агент загружает главную страницу сайта и
           объясняет, на что опирается при подборе ключевых фраз.
         </p>
-        <p className="mb-3 text-sm text-zinc-600">
+        <div className="mb-4">
+          <ProjectContextPanel
+            websiteUrl={analyzedWebsiteUrl}
+            platform={project.primaryPlatform}
+            connected={connected}
+            campaignRefs={campaignRefs}
+          />
+        </div>
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           {analysis?.task
             ? `Задача: ${analysis.task.status}${analysis.task.error ? ` · ${analysis.task.error}` : ""}`
             : analysis?.ready
@@ -1717,7 +1904,7 @@ function ProjectPageInner() {
           </button>
         </div>
         {analysis?.ready && analysis.explanation ? (
-          <div className="mb-4 rounded border border-zinc-200 bg-zinc-50 p-4 text-sm whitespace-pre-wrap">
+          <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-mid)] p-4 text-sm whitespace-pre-wrap">
             {analysis.explanation}
           </div>
         ) : (
@@ -1731,12 +1918,12 @@ function ProjectPageInner() {
             <label className="mb-1 block text-sm font-medium">
               Добавить свои слова
             </label>
-            <p className="mb-2 text-xs text-zinc-500">
+            <p className="mb-2 text-xs text-[var(--fg-muted)]">
               По одному на строку или через запятую — попадут в seed-список
               наравне с масками из брифа.
             </p>
             <textarea
-              className="mb-3 min-h-[96px] w-full rounded border border-zinc-200 p-2 text-sm"
+              className="mb-3 min-h-[96px] w-full rounded border border-[var(--border)] p-2 text-sm"
               value={customSeedsText}
               onChange={(event) => setCustomSeedsText(event.target.value)}
               disabled={pending || readOnly}
@@ -1757,10 +1944,11 @@ function ProjectPageInner() {
                     await saveCustomSeeds();
                   }
                   await runSemantic();
+                  router.push(`/projects/${params.id}?tab=plan`);
                 }}
                 disabled={pending || readOnly || !aiReady}
               >
-                {pending ? "Собираем…" : "Собрать семантику"}
+                {pending ? "Собираем…" : "Собрать семантику → План"}
               </button>
             </div>
           </>
@@ -1768,167 +1956,25 @@ function ProjectPageInner() {
       </section>
       ) : null}
 
-      {tab === "semantic" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
-        <h2 className="mb-2 font-medium">
-          <TermHint term="cluster">Семантическое ядро</TermHint>
-        </h2>
-        <BeginnerNote term="cluster" className="mb-3" />
-        <p className="mb-3 text-sm text-zinc-600">
-          {semantic?.task
-            ? `Задача: ${semantic.task.status}${semantic.task.error ? ` · ${semantic.task.error}` : ""}`
-            : "Ещё не запускалось"}
-        </p>
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            className={btnClass("primary")}
-            onClick={runSemantic}
-            disabled={
-              pending ||
-              readOnly ||
-              !brief ||
-              !aiReady ||
-              !pipeline?.facts.hasAnalysis
-            }
-          >
-            {pending ? "Собираем…" : "Собрать семантику"}
-          </button>
-          <button
-            className={btnClass("secondary")}
-            onClick={() =>
-              downloadAuthenticated(
-                `/projects/${params.id}/semantic/export?format=csv`,
-                "semantic.csv",
-              )
-            }
-          >
-            CSV
-          </button>
-          <button
-            className={btnClass("secondary")}
-            onClick={() =>
-              downloadAuthenticated(
-                `/projects/${params.id}/semantic/export?format=xlsx`,
-                "semantic.xls",
-              )
-            }
-          >
-            XLSX
-          </button>
-          <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
-            <input
-              type="checkbox"
-              checked={semanticCommercialOnly}
-              onChange={(event) =>
-                setSemanticCommercialOnly(event.target.checked)
-              }
-              className="rounded border-zinc-300"
-            />
-            Только коммерческие
-          </label>
-        </div>
-        {semantic?.negativeSuggestions?.length ? (
-          <NegativeSuggestionsPanel
-            suggestions={semantic.negativeSuggestions}
-            readOnly={readOnly}
-            pending={pending}
-            onResolve={resolveNegativeSuggestion}
-          />
-        ) : null}
-        {semantic && semantic.clusters.length > 0 ? (
-          <div className="flex flex-col gap-4">
-            {semantic.clusters.map((cluster) => {
-              const visibleKeywords = semanticCommercialOnly
-                ? cluster.keywords.filter((kw) => isKeywordCommercial(kw))
-                : cluster.keywords;
-              const hiddenCount =
-                cluster.keywords.length - visibleKeywords.length;
-              return (
-              <div key={cluster.id} className="overflow-x-auto">
-                <p className="mb-1 font-medium">
-                  <TermHint term="cluster">{cluster.name}</TermHint>{" "}
-                  <span className="text-sm font-normal text-zinc-500">
-                    {cluster.category}
-                    {hiddenCount > 0 && semanticCommercialOnly
-                      ? ` · скрыто ${hiddenCount} некоммерческих`
-                      : ""}
-                  </span>
-                </p>
-                <table className="ui-table">
-                  <thead>
-                    <tr className="text-zinc-500">
-                      <th className="py-1 pr-2">Фраза</th>
-                      <th className="py-1 pr-2">
-                        <TermHint term="intent">Интент</TermHint>
-                      </th>
-                      <th className="py-1 pr-2">Источник</th>
-                      <th className="py-1 pr-2">Почему</th>
-                      <th className="py-1">Частота</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleKeywords.map((kw) => (
-                      <tr key={kw.phrase} className="border-t border-zinc-100">
-                        <td className="py-1 pr-2">{kw.phrase}</td>
-                        <td className="py-1 pr-2">
-                          <TermHint
-                            term={
-                              kw.intent === "hot"
-                                ? "intent_hot"
-                                : kw.intent === "warm"
-                                  ? "intent_warm"
-                                  : kw.intent === "navigational"
-                                    ? "intent_navigational"
-                                    : "intent"
-                            }
-                          >
-                            {kw.intent}
-                          </TermHint>
-                        </td>
-                        <td className="py-1 pr-2">
-                          {isAiSuggestedKeyword(kw.source) ? (
-                            <Badge kind="info">{keywordSourceLabel(kw.source)}</Badge>
-                          ) : (
-                            <span className="text-xs text-zinc-600">
-                              {keywordSourceLabel(kw.source)}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-1 pr-2 text-xs text-zinc-500">
-                          {keywordWhy(kw)}
-                        </td>
-                        <td className="py-1">{kw.frequency}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {cluster.negativeKeywords.length > 0 ? (
-                  <p className="mt-1 text-xs text-zinc-500">
-                    <TermHint term="cross_minus">Минуса (кросс-минусация)</TermHint>
-                    : {cluster.negativeKeywords.slice(0, 8).join(", ")}
-                    {cluster.negativeKeywords.length > 8 ? "…" : ""}
-                  </p>
-                ) : null}
-              </div>
-            );
-            })}
-          </div>
-        ) : (
-          <EmptyState title="Сначала выполните анализ">
-            На вкладке «Анализ» запустите разбор сайта и брифа, затем соберите
-            семантику здесь или на вкладке «Анализ».
-          </EmptyState>
-        )}
-      </section>
-      ) : null}
-
       {tab === "plan" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
-        <h2 className="mb-2 font-medium">План запуска</h2>
-        <p className="mb-4 text-sm text-zinc-600">
-          Коммерческая семантика, минус-слова и структура кампаний — в одном
-          месте перед запуском копирайтинга.
+      <section className="ui-panel relative mb-4 p-4">
+        <h2 className="mb-1 text-base font-semibold tracking-tight">
+          Семантика и план запуска
+        </h2>
+        <p className="mb-4 text-sm text-[var(--fg-muted)]">
+          Здесь же: «Собрать семантику», кластеры, минус-слова, экспорт CSV/XLSX,
+          структура кампаний и «Ок, собирай». Раньше это была отдельная вкладка
+          «Семантика» — функциональность на месте.
         </p>
+        <div className="mb-4">
+          <ProjectContextPanel
+            websiteUrl={analyzedWebsiteUrl}
+            platform={project.primaryPlatform}
+            connected={connected}
+            campaignRefs={campaignRefs}
+            compact
+          />
+        </div>
         <PlanReviewPanel
           semantic={
             semantic
@@ -1938,11 +1984,26 @@ function ProjectPageInner() {
                 }
               : null
           }
+          semanticTask={semantic?.task ?? null}
           briefNegatives={brief?.exclusions.global_negative_keywords ?? []}
           campaignPlan={campaignPlan}
           readOnly={readOnly}
           pending={pending}
           aiReady={aiReady}
+          hasAnalysis={Boolean(pipeline?.facts.hasAnalysis)}
+          onRunSemantic={() => void runSemantic()}
+          onExportCsv={() =>
+            void downloadAuthenticated(
+              `/projects/${params.id}/semantic/export?format=csv&commercial=1`,
+              "semantic-commercial.csv",
+            )
+          }
+          onExportXlsx={() =>
+            void downloadAuthenticated(
+              `/projects/${params.id}/semantic/export?format=xlsx&commercial=1`,
+              "semantic-commercial.xls",
+            )
+          }
           onRunPlan={runCampaignPlan}
           onApprove={approvePlanAndBuild}
           onResolveNegative={resolveNegativeSuggestion}
@@ -1973,9 +2034,9 @@ function ProjectPageInner() {
         generateLabel="Сгенерировать объявления"
       />
 
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+      <section className="ui-panel relative mb-4 p-4">
         <h2 className="mb-2 font-medium">Визуальные креативы</h2>
-        <p className="mb-3 text-sm text-zinc-600">
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           Изображения и видео через MediaGenerationConnector. В рекламный
           кабинет не публикуются — только превью и утверждение в платформе.
           {media?.task
@@ -2017,7 +2078,7 @@ function ProjectPageInner() {
             {media.assets.map((item) => (
               <li
                 key={item.id}
-                className="rounded border border-zinc-100 p-3 text-sm"
+                className="rounded border border-[var(--border)] p-3 text-sm"
               >
                 <MediaPreview
                   projectId={params.id}
@@ -2025,14 +2086,14 @@ function ProjectPageInner() {
                   kind={item.kind}
                   mimeType={item.mimeType}
                 />
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-[var(--fg-muted)]">
                   {item.kind === "video" ? "Видео" : "Изображение"}
                   {item.durationMs ? ` · ${Math.round(item.durationMs / 1000)} с` : ""}
                   {" · "}
                   {item.status} · {item.provider}
                   {item.clusterName ? ` · ${item.clusterName}` : ""}
                 </p>
-                <p className="mt-1 line-clamp-3 text-xs text-zinc-600">
+                <p className="mt-1 line-clamp-3 text-xs text-[var(--fg-muted)]">
                   {item.prompt}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -2069,7 +2130,7 @@ function ProjectPageInner() {
           </ul>
         ) : (
           <EmptyState title="Соберите семантику, затем сгенерируйте изображения">
-            На вкладке «Семантика» нажмите «Собрать семантику», вернитесь сюда и
+            На вкладке «Семантика · План» нажмите «Собрать семантику», вернитесь сюда и
             нажмите «Сгенерировать изображения». В рекламный кабинет файлы не
             уходят.
           </EmptyState>
@@ -2079,9 +2140,18 @@ function ProjectPageInner() {
       ) : null}
 
       {tab === "campaign" ? (
-      <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+      <section className="ui-panel relative mb-4 p-4">
         <h2 className="mb-2 font-medium">Кампания</h2>
-        <p className="mb-3 text-sm text-zinc-600">
+        <div className="mb-4">
+          <ProjectContextPanel
+            websiteUrl={analyzedWebsiteUrl}
+            platform={project.primaryPlatform}
+            connected={connected}
+            campaignRefs={campaignRefs}
+            compact
+          />
+        </div>
+        <p className="mb-3 text-sm text-[var(--fg-muted)]">
           {campaigns?.task
             ? `Черновик: ${campaigns.task.status}`
             : "Черновик ещё не собирался"}
@@ -2098,21 +2168,54 @@ function ProjectPageInner() {
         </button>
         {campaigns?.draft ? (
           <div className="flex flex-col gap-4 text-sm">
-            {campaigns.draft.structureJson.campaigns.map((unit) => (
+            {campaigns.draft.structureJson.campaigns.map((unit, unitIndex) => (
               <div
-                key={unit.campaign.name}
-                className="rounded border border-zinc-100 p-3"
+                key={`${unit.campaign.name}-${unitIndex}`}
+                className="rounded border border-[var(--border)] p-3"
               >
                 <p className="mb-2 font-medium">{unit.campaign.name}</p>
+                {unit.publish?.externalCampaignId ? (
+                  <p className="mb-2 text-xs text-[var(--fg-muted)]">
+                    ID в {platformTitle(project.primaryPlatform)}:{" "}
+                    {cabinetCampaignUrl(
+                      project.primaryPlatform,
+                      unit.publish.externalCampaignId,
+                    ) ? (
+                      <a
+                        href={
+                          cabinetCampaignUrl(
+                            project.primaryPlatform,
+                            unit.publish.externalCampaignId,
+                          )!
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono font-medium underline-offset-2 hover:underline"
+                      >
+                        №{unit.publish.externalCampaignId}
+                      </a>
+                    ) : (
+                      <span className="font-mono font-medium">
+                        №{unit.publish.externalCampaignId}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="mb-2 text-xs text-[var(--fg-muted)]">
+                    После публикации здесь появится номер кампании в{" "}
+                    {platformTitle(project.primaryPlatform)} — сейчас это только
+                    черновик «{unit.campaign.name}».
+                  </p>
+                )}
                 <p>
                   Бюджет: {unit.campaign.budget_daily}{" "}
                   {unit.campaign.currency} · гео:{" "}
                   {unit.campaign.geo.join(", ")} · сайт: {unit.campaign.href}
                 </p>
                 {unit.ad_groups.map((group) => (
-                  <div key={group.name} className="mt-2 rounded border border-zinc-50 p-2">
+                  <div key={group.name} className="mt-2 rounded border border-[var(--border)] p-2">
                     <p className="font-medium">{group.name}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-[var(--fg-muted)]">
                       Ключи: {group.keywords.slice(0, 8).join(", ")}
                       {group.keywords.length > 8 ? "…" : ""}
                     </p>
@@ -2127,7 +2230,7 @@ function ProjectPageInner() {
                   </div>
                 ))}
                 {unit.publish?.error ? (
-                  <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-red-800">
+                  <p className="mt-2 rounded border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] p-2 text-[var(--status-danger-fg)]">
                     Сбой на шаге {unit.publish.step}: {unit.publish.error}
                   </p>
                 ) : null}
@@ -2178,7 +2281,7 @@ function ProjectPageInner() {
               Запустить кампанию
             </button>
             {!connected ? (
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-[var(--fg-muted)]">
                 Сначала подключите кабинет {platformTitle(project.primaryPlatform)}.
               </p>
             ) : null}
@@ -2191,21 +2294,58 @@ function ProjectPageInner() {
           </EmptyState>
         )}
         {campaigns && campaigns.campaigns.length > 0 ? (
-          <ul className="mt-4 text-sm">
-            {campaigns.campaigns.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center gap-2">
-                ID в кабинете: {item.externalCampaignId} · {item.status}
-                <StatusBadge value={item.status} map="campaign" />
-                {item.budget != null ? ` · бюджет ${item.budget}` : ""}
+          <div className="mt-4">
+            <h3 className="mb-2 text-sm font-medium">
+              Опубликованные кампании в кабинете
+            </h3>
+            <ul className="flex flex-col gap-2 text-sm">
+            {campaigns.campaigns
+              .filter((item) => item.source !== "external")
+              .map((item) => {
+                const ref = campaignRefs.find(
+                  (row) => row.externalCampaignId === item.externalCampaignId,
+                );
+                const cabinetUrl = cabinetCampaignUrl(
+                  project.primaryPlatform,
+                  item.externalCampaignId,
+                );
+                return (
+              <li
+                key={item.id}
+                className="rounded border border-[var(--border)] px-3 py-2"
+              >
+                <p className="font-medium">
+                  {ref?.internalName ?? item.name ?? `Кампания ${item.externalCampaignId}`}
+                </p>
+                <p className="mt-1 text-xs text-[var(--fg-muted)]">
+                  ID в {platformTitle(project.primaryPlatform)}:{" "}
+                  {cabinetUrl ? (
+                    <a
+                      href={cabinetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono underline-offset-2 hover:underline"
+                    >
+                      №{item.externalCampaignId}
+                    </a>
+                  ) : (
+                    <span className="font-mono">№{item.externalCampaignId}</span>
+                  )}
+                  {" · "}
+                  <StatusBadge value={item.status} map="campaign" />
+                  {item.budget != null ? ` · бюджет ${item.budget}` : ""}
+                </p>
               </li>
-            ))}
+                );
+              })}
           </ul>
+          </div>
         ) : null}
       </section>
       ) : null}
 
       {tab === "brief" ? (
-      <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
+      <section className="ui-panel relative p-4">
         <h2 className="mb-3 font-medium">Бриф</h2>
         <BriefEditor
           brief={brief}

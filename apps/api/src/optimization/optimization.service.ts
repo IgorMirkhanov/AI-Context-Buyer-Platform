@@ -11,6 +11,7 @@ import {
   AdWriteActor,
   AgentTaskStatus,
   AgentType,
+  CampaignSource,
   LiveCampaignStatus,
   OptimizationRecStatus,
   OptimizationRecType,
@@ -102,7 +103,7 @@ export class OptimizationService implements OnModuleInit {
     const projects = await this.prisma.project.findMany({
       where: {
         optimizationLaunchedAt: { not: null },
-        campaigns: { some: {} },
+        campaigns: { some: { source: CampaignSource.platform } },
       },
       select: {
         id: true,
@@ -196,7 +197,7 @@ export class OptimizationService implements OnModuleInit {
     const credentials = await this.ai.tryResolveOptional(organizationId);
     const project = await this.requireProject(organizationId, projectId);
     const campaigns = await this.prisma.campaign.findMany({
-      where: { projectId },
+      where: { projectId, source: CampaignSource.platform },
     });
     if (campaigns.length === 0) {
       throw new BadRequestException(

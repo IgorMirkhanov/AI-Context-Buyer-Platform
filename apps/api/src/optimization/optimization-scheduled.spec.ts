@@ -177,4 +177,11 @@ describe('OptimizationService scheduled runs', () => {
       projectId: 'due',
     });
   });
+
+  it('run uses only platform campaigns', async () => {
+    await service.run('org-1', 'proj-1');
+    expect(prisma.campaign.findMany).toHaveBeenCalledWith({
+      where: { projectId: 'proj-1', source: 'platform' },
+    });
+  });
 });

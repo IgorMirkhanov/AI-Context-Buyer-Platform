@@ -63,6 +63,7 @@ export type AnalyticsCampaignMeta = {
   name: string;
   externalCampaignId: string;
   status: string;
+  source?: "platform" | "external";
 };
 
 export type AnalyticsCampaignSlice = AnalyticsCampaignMeta & {

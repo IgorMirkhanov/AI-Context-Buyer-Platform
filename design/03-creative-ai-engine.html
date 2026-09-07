@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NeuralAd Engine - Creative AI Engine</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "tertiary-fixed-dim": "#d0bcff",
+            "on-tertiary-fixed": "#23005c",
+            "secondary-fixed-dim": "#4edea3",
+            "surface-variant": "#353439",
+            "on-primary": "#1000a9",
+            "on-primary-fixed": "#07006c",
+            "primary-container": "#8083ff",
+            "error": "#ffb4ab",
+            "inverse-on-surface": "#303034",
+            "surface-container-high": "#2a292e",
+            "tertiary-fixed": "#e9ddff",
+            "surface-dim": "#131317",
+            "primary": "#c0c1ff",
+            "outline-variant": "#464554",
+            "on-secondary-fixed-variant": "#005236",
+            "surface-container": "#1f1f23",
+            "on-primary-fixed-variant": "#2f2ebe",
+            "inverse-surface": "#e4e1e7",
+            "tertiary": "#d0bcff",
+            "inverse-primary": "#494bd6",
+            "on-error-container": "#ffdad6",
+            "on-secondary-fixed": "#002113",
+            "secondary-container": "#00a572",
+            "background": "#131317",
+            "on-tertiary-container": "#340080",
+            "surface-container-low": "#1b1b1f",
+            "surface-container-highest": "#353439",
+            "on-secondary": "#003824",
+            "surface": "#131317",
+            "surface-bright": "#39393d",
+            "on-background": "#e4e1e7",
+            "secondary-fixed": "#6ffbbe",
+            "surface-container-lowest": "#0e0e12",
+            "on-tertiary-fixed-variant": "#5516be",
+            "outline": "#908fa0",
+            "error-container": "#93000a",
+            "on-tertiary": "#3c0091",
+            "secondary": "#4edea3",
+            "tertiary-container": "#a078ff",
+            "surface-tint": "#c0c1ff",
+            "on-surface": "#e4e1e7",
+            "on-primary-container": "#0d0096",
+            "on-secondary-container": "#00311f",
+            "primary-fixed-dim": "#c0c1ff",
+            "on-surface-variant": "#c7c4d7",
+            "on-error": "#690005",
+            "primary-fixed": "#e1e0ff"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "spacing": {
+            "space-md": "1rem",
+            "space-2xs": "0.25rem",
+            "gutter-mobile": "0.75rem",
+            "space-sm": "0.75rem",
+            "max-content-width": "88rem",
+            "space-2xl": "3rem",
+            "space-xl": "2rem",
+            "sidebar-collapsed": "3.5rem",
+            "space-xs": "0.5rem",
+            "space-3xs": "0.125rem",
+            "gutter-desktop": "1rem",
+            "sidebar-width": "15rem",
+            "space-lg": "1.5rem"
+          },
+          "fontFamily": {
+            "body-lg": ["Inter"],
+            "mono-sm": ["JetBrains Mono"],
+            "headline-lg": ["Geist"],
+            "label-sm": ["Inter"],
+            "headline-md": ["Geist"],
+            "mono-badge": ["JetBrains Mono"],
+            "body-sm": ["Inter"],
+            "label-md": ["Inter"],
+            "body-md": ["Inter"],
+            "headline-xl-mobile": ["Geist"],
+            "headline-xl": ["Geist"],
+            "mono-md": ["JetBrains Mono"]
+          },
+          "fontSize": {
+            "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "mono-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0", "fontWeight": "400" }],
+            "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.025em", "fontWeight": "600" }],
+            "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "headline-md": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "500" }],
+            "mono-badge": ["10px", { "lineHeight": "12px", "letterSpacing": "0.04em", "fontWeight": "500" }],
+            "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0", "fontWeight": "400" }],
+            "label-md": ["13px", { "lineHeight": "16px", "letterSpacing": "-0.005em", "fontWeight": "500" }],
+            "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "400" }],
+            "headline-xl-mobile": ["28px", { "lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "headline-xl": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.03em", "fontWeight": "600" }],
+            "mono-md": ["12px", { "lineHeight": "16px", "letterSpacing": "-0.01em", "fontWeight": "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .hairline-b { border-bottom: 1px solid #272732; }
+    .hairline-r { border-right: 1px solid #272732; }
+    .hairline-l { border-left: 1px solid #272732; }
+    .hairline-all { border: 1px solid #272732; }
+    .top-edge-highlight {
+      position: relative;
+    }
+    .top-edge-highlight::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(128, 131, 255, 0.5) 0%, rgba(208, 188, 255, 0.1) 50%, transparent 100%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface antialiased overflow-x-hidden">
+<!-- ================= LEFT PRECISION SIDEBAR ================= -->
+<aside class="flex flex-col justify-between h-full p-space-sm w-sidebar-width fixed left-0 top-0 z-40 bg-surface-container-low hairline-r select-none">
+<!-- Brand Workspace Switcher -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between px-space-xs py-space-2xs bg-surface-container rounded hairline-all cursor-pointer hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-space-xs">
+<div class="w-6 h-6 rounded bg-primary-container/20 flex items-center justify-center hairline-all border-primary-container/40">
+<span class="material-symbols-outlined text-primary text-[15px]" style="font-variation-settings: 'FILL' 1;">dataset</span>
+</div>
+<div class="flex flex-col">
+<span class="text-label-md font-label-md text-on-surface leading-none font-semibold">NeuralAd Engine</span>
+<span class="text-mono-sm font-mono-sm text-outline leading-none mt-1">Enterprise Tier</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline text-[16px]">unfold_more</span>
+</div>
+<!-- Quick Action Deployment CTA -->
+<button class="w-full h-8 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-primary flex items-center justify-center gap-space-2xs cursor-pointer text-label-sm font-label-sm transition-all duration-150">
+<span class="material-symbols-outlined text-[14px]">bolt</span>
+<span>Deploy Variant</span>
+</button>
+<!-- Navigation Tabs Rail -->
+<nav aria-label="Main Navigation" class="flex flex-col gap-1 mt-space-xs">
+<!-- 1: Campaigns -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">campaign</span>
+<span class="text-label-md font-label-md">Campaigns</span>
+</a>
+<!-- 2: Creative AI Engine (ACTIVE STATE MANDATE) -->
+<a class="flex items-center justify-between px-space-sm py-space-2xs bg-surface-container-high text-on-surface border-l-2 border-primary-container rounded transition-all duration-100 ease-out" href="#">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<span class="text-label-md font-label-md text-on-surface font-medium">Creative AI Engine</span>
+</div>
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse"></span>
+</a>
+<!-- 3: Audiences -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">groups</span>
+<span class="text-label-md font-label-md">Audiences</span>
+</a>
+<!-- 4: Analytics -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">analytics</span>
+<span class="text-label-md font-label-md">Analytics</span>
+</a>
+<!-- 5: Spend & Billing -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">credit_card</span>
+<span class="text-label-md font-label-md">Spend &amp; Billing</span>
+</a>
+<!-- 6: API & Webhooks -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+<span class="text-label-md font-label-md">API &amp; Webhooks</span>
+</a>
+<!-- 7: Settings -->
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+<span class="text-label-md font-label-md">Settings</span>
+</a>
+</nav>
+</div>
+<!-- Sidebar Footer Rail -->
+<div class="flex flex-col gap-2 pt-space-xs hairline-b border-t border-outline-variant/30">
+<div class="px-space-xs py-space-2xs bg-surface-container-lowest rounded hairline-all flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="text-mono-sm font-mono-sm text-outline">Engine Latency</span>
+</div>
+<span class="text-mono-sm font-mono-sm text-secondary font-medium">18ms</span>
+</div>
+<a class="flex items-center gap-space-xs px-space-sm py-space-2xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface rounded transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">help</span>
+<span class="text-label-md font-label-md">Docs &amp; Status</span>
+</a>
+</div>
+</aside>
+<!-- ================= TOP INSTRUMENT BAR ================= -->
+<header class="flex justify-between items-center w-[calc(100%-15rem)] px-space-md h-12 sticky top-0 z-30 ml-sidebar-width bg-surface hairline-b backdrop-blur-md">
+<!-- Left search bar & quick command -->
+<div class="flex items-center gap-space-md">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-2.5 text-outline text-[16px]">search</span>
+<input class="bg-surface-container-lowest hairline-all h-8 pl-8 pr-12 rounded text-body-sm font-body-sm text-on-surface placeholder:text-outline/70 w-80 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" placeholder="Search prompts, synthetic models, or asset IDs..." type="text"/>
+<div class="absolute right-2 flex items-center gap-0.5">
+<kbd class="text-mono-sm font-mono-sm bg-surface-container px-1 py-0.5 rounded text-outline hairline-all">⌘</kbd>
+<kbd class="text-mono-sm font-mono-sm bg-surface-container px-1 py-0.5 rounded text-outline hairline-all">K</kbd>
+</div>
+</div>
+<!-- Navigation links cluster -->
+<nav class="hidden lg:flex items-center gap-space-md ml-space-xs">
+<a class="text-on-surface-variant text-label-sm font-label-sm hover:text-on-surface transition-colors pb-1" href="#">Overview</a>
+<a class="text-on-surface text-label-sm font-label-sm font-medium border-b border-primary pb-1" href="#">Live Feed</a>
+<a class="text-on-surface-variant text-label-sm font-label-sm hover:text-on-surface transition-colors pb-1" href="#">System Health</a>
+</nav>
+</div>
+<!-- Right utility & cluster actions -->
+<div class="flex items-center gap-space-sm">
+<!-- Trailing Secondary: Past 30 Days selector -->
+<button class="h-8 px-space-sm bg-surface-container hairline-all hover:bg-surface-container-high rounded text-on-surface text-label-sm font-label-sm flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[15px] text-outline">calendar_today</span>
+<span>Past 30 Days</span>
+<span class="material-symbols-outlined text-[14px] text-outline">expand_more</span>
+</button>
+<!-- Trailing Primary: Create Campaign -->
+<button class="h-8 px-space-sm bg-primary-container hover:bg-primary-container/90 text-on-primary-container rounded hairline-all border-white/20 text-label-sm font-label-sm font-medium flex items-center gap-1.5 shadow-sm transition-all duration-150 active:scale-95">
+<span class="material-symbols-outlined text-[16px]">add</span>
+<span>Create Campaign</span>
+</button>
+<div class="h-4 w-[1px] bg-outline-variant/40 mx-1"></div>
+<!-- Icon actions: Notifications & Tune -->
+<button class="w-8 h-8 rounded hairline-all border-transparent hover:border-outline-variant hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Notifications">
+<span class="material-symbols-outlined text-[18px]">notifications</span>
+</button>
+<button class="w-8 h-8 rounded hairline-all border-transparent hover:border-outline-variant hover:bg-surface-container flex items-center justify-center text-outline hover:text-on-surface transition-colors" title="Engine Tune">
+<span class="material-symbols-outlined text-[18px]">tune</span>
+</button>
+<!-- Profile Avatar -->
+<div class="w-7 h-7 rounded-full bg-surface-container-high hairline-all flex items-center justify-center ml-1 text-primary text-label-sm font-label-sm font-semibold cursor-pointer ring-1 ring-outline-variant/40">
+        NA
+      </div>
+</div>
+</header>
+<!-- ================= MAIN STUDIO CANVAS ================= -->
+<main class="ml-sidebar-width min-h-[calc(100vh-3rem)] p-space-md flex flex-col gap-space-md max-w-max-content-width">
+<!-- 1. WORKSPACE HEADER -->
+<section class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-sm bg-surface-container-low p-space-md rounded-xl hairline-all top-edge-highlight">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight">Creative AI Engine</h1>
+<!-- Model status pill -->
+<div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 hairline-all border-secondary/30">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary animate-ping"></span>
+<span class="text-mono-badge font-mono-badge text-secondary uppercase">Latent Diffusion v4.2 &amp; Claude-3.5 Active</span>
+</div>
+</div>
+<p class="text-body-md font-body-md text-outline">Autonomous multi-modal ad synthesis &amp; copy generation for high-conversion paid media pipelines.</p>
+</div>
+<!-- Action Button Group -->
+<div class="flex items-center gap-space-xs flex-wrap">
+<button class="h-8 px-space-sm bg-surface-container hover:bg-surface-container-high hairline-all rounded text-on-surface text-label-sm font-label-sm flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-outline">bookmark_border</span>
+<span>Prompt Presets</span>
+</button>
+<button class="h-8 px-space-sm bg-surface-container hover:bg-surface-container-high hairline-all rounded text-on-surface text-label-sm font-label-sm flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-outline">ios_share</span>
+<span>Export to Campaign</span>
+</button>
+<button class="h-8 px-space-md bg-primary-container text-on-primary-container hover:opacity-95 hairline-all border-white/20 rounded text-label-sm font-label-sm font-medium flex items-center gap-1.5 shadow-[0_0_16px_rgba(128,131,255,0.35)] transition-all">
+<span class="material-symbols-outlined text-[16px]">smart_toy</span>
+<span>Batch Generate</span>
+</button>
+</div>
+</section>
+<!-- 2. GENERATION PARAMETER CONTROL BAR & PROMPT MATRIX -->
+<section class="bg-surface-container-low rounded-xl hairline-all p-space-md flex flex-col gap-space-sm">
+<!-- Parameter Selectors Row -->
+<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-12 gap-space-sm items-center">
+<!-- Multi-channel format toggles (4 cols) -->
+<div class="lg:col-span-4 flex flex-col gap-1.5">
+<label class="text-label-sm font-label-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">aspect_ratio</span>
+<span>Target Form Factor</span>
+</label>
+<div class="grid grid-cols-3 bg-surface-container-lowest p-0.5 rounded hairline-all">
+<button class="h-7 bg-surface-container-high text-on-surface text-label-sm font-label-sm rounded flex items-center justify-center gap-1 transition-all">
+<span class="text-mono-sm font-mono-sm font-medium">9:16</span>
+<span class="text-[10px] text-outline">Reels/TikTok</span>
+</button>
+<button class="h-7 text-outline hover:text-on-surface text-label-sm font-label-sm rounded flex items-center justify-center gap-1 transition-all">
+<span class="text-mono-sm font-mono-sm font-medium">1:1</span>
+<span class="text-[10px]">Feed</span>
+</button>
+<button class="h-7 text-outline hover:text-on-surface text-label-sm font-label-sm rounded flex items-center justify-center gap-1 transition-all">
+<span class="text-mono-sm font-mono-sm font-medium">16:9</span>
+<span class="text-[10px]">Display</span>
+</button>
+</div>
+</div>
+<!-- Target Audience Persona (4 cols) -->
+<div class="lg:col-span-4 flex flex-col gap-1.5">
+<label class="text-label-sm font-label-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">psychology</span>
+<span>Audience Persona</span>
+</label>
+<div class="relative">
+<select class="w-full h-8 bg-surface-container-lowest hairline-all text-on-surface rounded px-space-xs text-body-sm font-body-sm appearance-none focus:outline-none focus:border-primary-container cursor-pointer">
+<option>B2B SaaS DevTools Leads (Mid-Market to Enterprise CTOs)</option>
+<option>Direct-to-Consumer Growth Hackers &amp; Brand Managers</option>
+<option>Performance Marketers &amp; Media Buyers</option>
+<option>E-Commerce Retargeting Segments (Abandoned Cart)</option>
+</select>
+<span class="material-symbols-outlined text-outline text-[16px] absolute right-2 top-2 pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Tone & Angle Selector (4 cols) -->
+<div class="lg:col-span-4 flex flex-col gap-1.5">
+<label class="text-label-sm font-label-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">record_voice_over</span>
+<span>Narrative Tone &amp; Angle</span>
+</label>
+<div class="relative">
+<select class="w-full h-8 bg-surface-container-lowest hairline-all text-on-surface rounded px-space-xs text-body-sm font-body-sm appearance-none focus:outline-none focus:border-primary-container cursor-pointer">
+<option>Urgency &amp; FOMO (Strict SLA Constraints)</option>
+<option>Social Proof &amp; Enterprise Customer Case Studies</option>
+<option>Technical Deep-Dive (Benchmark-Driven Alpha)</option>
+<option>Provocative Contrarian Counter-Narrative</option>
+</select>
+<span class="material-symbols-outlined text-outline text-[16px] absolute right-2 top-2 pointer-events-none">expand_more</span>
+</div>
+</div>
+</div>
+<!-- Synthesis Prompt Bar -->
+<div class="flex flex-col gap-2 pt-space-xs hairline-b border-t border-outline-variant/30">
+<div class="relative">
+<textarea class="w-full bg-surface-container-lowest hairline-all rounded-lg p-space-sm text-body-md font-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container resize-none leading-relaxed" placeholder="Describe the creative thesis, target pain-point, key hooks, or paste product landing page URL..." rows="2"></textarea>
+<button class="absolute right-3 bottom-3 h-7 px-space-sm bg-primary text-on-primary font-medium text-label-sm font-label-sm rounded flex items-center gap-1 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[14px]">auto_fix_high</span>
+<span>Synthesize</span>
+</button>
+</div>
+<!-- AI Enhancement Chips -->
+<div class="flex items-center gap-space-xs flex-wrap">
+<span class="text-mono-sm font-mono-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">bolt</span> Quick Injectors:
+          </span>
+<button class="px-2 py-0.5 rounded bg-surface-container hairline-all hover:bg-surface-container-high text-on-surface text-mono-sm font-mono-sm flex items-center gap-1 transition-colors">
+<span>+ High CTR Hook</span>
+</button>
+<button class="px-2 py-0.5 rounded bg-surface-container hairline-all hover:bg-surface-container-high text-on-surface text-mono-sm font-mono-sm flex items-center gap-1 transition-colors">
+<span>+ Problem-Agitation</span>
+</button>
+<button class="px-2 py-0.5 rounded bg-surface-container hairline-all hover:bg-surface-container-high text-on-surface text-mono-sm font-mono-sm flex items-center gap-1 transition-colors">
+<span>+ B2B Founder Angle</span>
+</button>
+<button class="px-2 py-0.5 rounded bg-surface-container hairline-all hover:bg-surface-container-high text-on-surface text-mono-sm font-mono-sm flex items-center gap-1 transition-colors">
+<span>+ Metric Proof (e.g. 4.2x ROAS)</span>
+</button>
+</div>
+</div>
+</section>
+<!-- 3. COPYWRITING GENERATION MATRIX & SIMULATION SPLIT -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-md">
+<!-- Copywriting Matrix (8 cols) -->
+<div class="lg:col-span-8 flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">edit_note</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Synthesized Ad Copy Variants</h2>
+<span class="text-mono-badge font-mono-badge bg-surface-container-high px-1.5 py-0.5 rounded hairline-all text-outline">3 GENERATED</span>
+</div>
+<button class="text-label-sm font-label-sm text-primary hover:underline flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">refresh</span>
+<span>Regenerate All Variants</span>
+</button>
+</div>
+<div class="grid grid-cols-1 gap-space-sm">
+<!-- Copy Card 1 -->
+<article class="bg-surface-container-low rounded-lg hairline-all p-space-md flex flex-col gap-space-sm hover:border-outline-variant transition-colors top-edge-highlight">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-2">
+<span class="text-mono-badge font-mono-badge px-2 py-0.5 rounded bg-primary/10 text-primary hairline-all border-primary/20">Direct Response UGC</span>
+<span class="text-mono-sm font-mono-sm text-outline">Variant A/B #892</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary/10 hairline-all border-secondary/30">
+<span class="material-symbols-outlined text-secondary text-[13px]" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="text-mono-badge font-mono-badge text-secondary font-medium">96% Predicted CTR Alpha</span>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-label-sm font-label-sm text-outline uppercase tracking-wider">Headline</span>
+<p class="text-body-lg font-body-lg text-on-surface font-semibold">"Stop burning 40% of your paid media budget on dead-end creative fatigue."</p>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-label-sm font-label-sm text-outline uppercase tracking-wider">Primary Ad Body</span>
+<p class="text-body-md font-body-md text-on-surface-variant leading-relaxed">
+                Most growth teams waste 20+ hours a week manually producing micro-variations. NeuralAd analyzes high-performing hook vectors in real time, injecting hyper-tailored multimodal hooks into your Meta &amp; TikTok stacks autonomously.
+              </p>
+</div>
+<div class="flex items-center justify-between pt-space-xs hairline-b border-t border-outline-variant/30">
+<div class="flex items-center gap-2">
+<span class="text-mono-sm font-mono-sm text-outline">CTA Vector:</span>
+<span class="text-mono-sm font-mono-sm text-primary px-1.5 py-0.5 bg-surface-container rounded hairline-all font-medium">Claim Free Audit →</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[13px]">content_copy</span>
+<span>Copy</span>
+</button>
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[13px]">refresh</span>
+<span>Regenerate</span>
+</button>
+<button class="h-7 px-2.5 bg-primary-container text-on-primary-container hover:opacity-90 hairline-all rounded text-label-sm font-label-sm font-medium flex items-center gap-1 transition-all">
+<span class="material-symbols-outlined text-[13px]">rocket_launch</span>
+<span>A/B Deploy</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Copy Card 2 -->
+<article class="bg-surface-container-low rounded-lg hairline-all p-space-md flex flex-col gap-space-sm hover:border-outline-variant transition-colors">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-2">
+<span class="text-mono-badge font-mono-badge px-2 py-0.5 rounded bg-tertiary-container/10 text-tertiary hairline-all border-tertiary-container/30">Pain-Point Agitator</span>
+<span class="text-mono-sm font-mono-sm text-outline">Variant A/B #893</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary/10 hairline-all border-secondary/30">
+<span class="material-symbols-outlined text-secondary text-[13px]" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="text-mono-badge font-mono-badge text-secondary font-medium">92% Predicted CTR Alpha</span>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-label-sm font-label-sm text-outline uppercase tracking-wider">Headline</span>
+<p class="text-body-lg font-body-lg text-on-surface font-semibold">"Your CAC doubled last quarter. Here is the mathematical reason why."</p>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-label-sm font-label-sm text-outline uppercase tracking-wider">Primary Ad Body</span>
+<p class="text-body-md font-body-md text-on-surface-variant leading-relaxed">
+                Ad platform algorithms now penalize creative repetition within 72 hours. NeuralAd continuously produces fresh visual assets and hook variations directly mapped to your target ROAS thresholds.
+              </p>
+</div>
+<div class="flex items-center justify-between pt-space-xs hairline-b border-t border-outline-variant/30">
+<div class="flex items-center gap-2">
+<span class="text-mono-sm font-mono-sm text-outline">CTA Vector:</span>
+<span class="text-mono-sm font-mono-sm text-primary px-1.5 py-0.5 bg-surface-container rounded hairline-all font-medium">Deploy Neural Engine →</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[13px]">content_copy</span>
+<span>Copy</span>
+</button>
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[13px]">refresh</span>
+<span>Regenerate</span>
+</button>
+<button class="h-7 px-2.5 bg-primary-container text-on-primary-container hover:opacity-90 hairline-all rounded text-label-sm font-label-sm font-medium flex items-center gap-1 transition-all">
+<span class="material-symbols-outlined text-[13px]">rocket_launch</span>
+<span>A/B Deploy</span>
+</button>
+</div>
+</div>
+</article>
+<!-- Copy Card 3 -->
+<article class="bg-surface-container-low rounded-lg hairline-all p-space-md flex flex-col gap-space-sm hover:border-outline-variant transition-colors">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-2">
+<span class="text-mono-badge font-mono-badge px-2 py-0.5 rounded bg-surface-container-high text-on-surface hairline-all">Technical Deep-Dive</span>
+<span class="text-mono-sm font-mono-sm text-outline">Variant A/B #894</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-secondary/10 hairline-all border-secondary/30">
+<span class="material-symbols-outlined text-secondary text-[13px]" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="text-mono-badge font-mono-badge text-secondary font-medium">88% Predicted CTR Alpha</span>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-label-sm font-label-sm text-outline uppercase tracking-wider">Headline</span>
+<p class="text-body-lg font-body-lg text-on-surface font-semibold">"Autonomous creative exploration using multi-armed bandits."</p>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-label-sm font-label-sm text-outline uppercase tracking-wider">Primary Ad Body</span>
+<p class="text-body-md font-body-md text-on-surface-variant leading-relaxed">
+                Plug your product schema directly into our latent generative pipeline. Real-time Bayesian attribution reallocates capital to winning copy hooks before ad spend bleeds.
+              </p>
+</div>
+<div class="flex items-center justify-between pt-space-xs hairline-b border-t border-outline-variant/30">
+<div class="flex items-center gap-2">
+<span class="text-mono-sm font-mono-sm text-outline">CTA Vector:</span>
+<span class="text-mono-sm font-mono-sm text-primary px-1.5 py-0.5 bg-surface-container rounded hairline-all font-medium">Read Technical Whitepaper →</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[13px]">content_copy</span>
+<span>Copy</span>
+</button>
+<button class="h-7 px-2 bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[13px]">refresh</span>
+<span>Regenerate</span>
+</button>
+<button class="h-7 px-2.5 bg-primary-container text-on-primary-container hover:opacity-90 hairline-all rounded text-label-sm font-label-sm font-medium flex items-center gap-1 transition-all">
+<span class="material-symbols-outlined text-[13px]">rocket_launch</span>
+<span>A/B Deploy</span>
+</button>
+</div>
+</div>
+</article>
+</div>
+</div>
+<!-- 5. REAL-TIME PREDICTIVE SIMULATION PANEL (4 cols) -->
+<div class="lg:col-span-4 flex flex-col gap-space-sm">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[18px]">query_stats</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Simulation &amp; Impact Telemetry</h2>
+</div>
+<div class="bg-surface-container-low rounded-lg hairline-all p-space-md flex flex-col gap-space-md top-edge-highlight">
+<!-- Metric 1: Predicted ROAS Impact -->
+<div class="flex flex-col gap-1 pb-space-sm hairline-b border-outline-variant/30">
+<span class="text-label-sm font-label-sm text-outline">Predicted ROAS Impact</span>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-xl font-headline-xl text-secondary font-semibold">+0.74x</span>
+<span class="text-mono-sm font-mono-sm text-secondary bg-secondary/10 px-2 py-0.5 rounded hairline-all border-secondary/30">+31.2% Lift vs Control</span>
+</div>
+<div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden mt-1">
+<div class="bg-secondary h-full rounded-full" style="width: 78%"></div>
+</div>
+</div>
+<!-- Metric 2: Fatigue Resistance -->
+<div class="flex flex-col gap-1 pb-space-sm hairline-b border-outline-variant/30">
+<span class="text-label-sm font-label-sm text-outline">Creative Fatigue Resistance</span>
+<div class="flex items-baseline justify-between">
+<span class="text-headline-lg font-headline-lg text-on-surface font-semibold">18 Days</span>
+<span class="text-mono-badge font-mono-badge text-primary bg-primary/10 px-2 py-0.5 rounded hairline-all border-primary/20">Optimal Rotation</span>
+</div>
+<p class="text-body-sm font-body-sm text-outline mt-1">Estimated runway before frequency saturation triggers CPC decay across target segments.</p>
+</div>
+<!-- Metric 3: Token Latency & Cost Analysis -->
+<div class="grid grid-cols-2 gap-space-sm pb-space-sm hairline-b border-outline-variant/30">
+<div class="flex flex-col">
+<span class="text-label-sm font-label-sm text-outline">Token Latency</span>
+<span class="text-mono-md font-mono-md text-on-surface font-semibold mt-0.5">1.2s</span>
+<span class="text-mono-sm font-mono-sm text-outline">P95: 1.48s</span>
+</div>
+<div class="flex flex-col">
+<span class="text-label-sm font-label-sm text-outline">Synthesis Cost</span>
+<span class="text-mono-md font-mono-md text-on-surface font-semibold mt-0.5">$0.0084</span>
+<span class="text-mono-sm font-mono-sm text-outline">Per Asset Matrix</span>
+</div>
+</div>
+<!-- Dynamic Parameter Sliders -->
+<div class="flex flex-col gap-3">
+<div class="flex flex-col gap-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm">
+<span class="text-on-surface">Generative Variance (Temperature)</span>
+<span class="text-mono-sm font-mono-sm text-primary">0.78</span>
+</div>
+<input class="w-full accent-primary bg-surface-container h-1.5 rounded cursor-pointer" max="100" min="0" type="range" value="78"/>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between items-center text-label-sm font-label-sm">
+<span class="text-on-surface">Synthetic Brand Alignment Threshold</span>
+<span class="text-mono-sm font-mono-sm text-secondary">94%</span>
+</div>
+<input class="w-full accent-secondary bg-surface-container h-1.5 rounded cursor-pointer" max="100" min="0" type="range" value="94"/>
+</div>
+</div>
+<!-- Direct Integration Badge -->
+<div class="p-space-xs bg-surface-container rounded hairline-all flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">verified</span>
+<div class="flex flex-col">
+<span class="text-label-sm font-label-sm text-on-surface font-medium">Meta &amp; TikTok Graph Connected</span>
+<span class="text-mono-sm font-mono-sm text-outline">Auto-sync approved variants directly</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- 4. MULTIMODAL VISUAL CREATIVE GRID -->
+<section class="flex flex-col gap-space-sm mt-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">collections</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Multi-Modal Visual Assets</h2>
+<span class="text-mono-badge font-mono-badge bg-surface-container-high px-1.5 py-0.5 rounded hairline-all text-outline">4 VARIANTS READY</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="h-7 px-space-sm bg-surface-container hover:bg-surface-container-high hairline-all rounded text-label-sm font-label-sm text-on-surface flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[14px]">filter_list</span>
+<span>Filter Aspect Ratio</span>
+</button>
+<button class="h-7 px-space-sm bg-primary-container text-on-primary-container font-medium text-label-sm font-label-sm rounded hairline-all flex items-center gap-1.5 transition-colors">
+<span class="material-symbols-outlined text-[14px]">checklist</span>
+<span>Select All for Campaign</span>
+</button>
+</div>
+</div>
+<!-- Bento Visual Asset Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-sm">
+<!-- Asset Card 1 (9:16 Vertical) -->
+<div class="bg-surface-container-low rounded-lg hairline-all overflow-hidden flex flex-col group hover:border-outline-variant transition-all">
+<div class="relative aspect-[9/16] bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="A sleek high-contrast developer analytics dashboard glowing on an ultra-modern smartphone frame set against a dark obsidian studio environment. Subtle violet and emerald laser grid lines illuminate the background with minimal Linear-style UI cards floating around. Dramatic architectural side lighting creates sharp reflections on metallic titanium edges." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3E7ZP2d-5nDr_1f7ED1BzM2AV-FOw6e5xhBoHbcQLvqWZi3Qo8hMMUzMsmfQeC5SZijpmopme7zfcWlWvgosN1qCiqVV280Ns4n60I-X63bbNKP2G7ZYOgRwe8UX2V1rwcXC4Pt6jzH1m6d88W6KAuCWXOu3pwlXNJovzKiCFWf_l5kmHPz8T5r5_3uwX8JMN9iaC3BNyu-6L1ju75tA_UyR_KF5hv6Ua6XV1jtoJWf_k3TarQY6qCA"/>
+<!-- Floating Overlay Tags -->
+<div class="absolute top-2 left-2 flex items-center gap-1">
+<span class="text-mono-badge font-mono-badge px-1.5 py-0.5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all text-on-surface">9:16 Reels</span>
+</div>
+<div class="absolute top-2 right-2">
+<label class="flex items-center justify-center w-5 h-5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all cursor-pointer">
+<input checked="" class="w-3.5 h-3.5 rounded bg-surface-container-lowest text-primary-container border-outline-variant focus:ring-0 focus:ring-offset-0" type="checkbox"/>
+</label>
+</div>
+<!-- Compliance Badge -->
+<div class="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-container-lowest/90 backdrop-blur-md hairline-all border-secondary/40">
+<span class="material-symbols-outlined text-secondary text-[12px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-mono-badge font-mono-badge text-secondary">Ad Policy Compliant</span>
+</div>
+</div>
+<div class="p-space-xs flex flex-col gap-1.5 bg-surface-container-low">
+<div class="flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline truncate">#LATENT-SEED-9021</span>
+<span class="text-mono-badge font-mono-badge text-primary bg-primary/10 px-1 rounded">Variance 0.4</span>
+</div>
+<div class="flex items-center justify-between pt-1 hairline-b border-t border-outline-variant/20">
+<span class="text-body-sm font-body-sm text-on-surface truncate">DevTool UI Kinetic Burst</span>
+<button class="text-outline hover:text-on-surface" title="Inspect Asset">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Asset Card 2 (9:16 Vertical) -->
+<div class="bg-surface-container-low rounded-lg hairline-all overflow-hidden flex flex-col group hover:border-outline-variant transition-all">
+<div class="relative aspect-[9/16] bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="A cinematic close-up of high-speed fiber optic and neural computation nodes emitting bright electric indigo light in a deep dark server facility. The atmosphere is sharp and futuristic, with volumetric haze and subtle emerald particles floating through an engineered linear corridor. Rendered in a high-fidelity hyper-realistic tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLVVANnLr8JOHK3sbgW2qMm9SDkFHI4-IuJtvHVwKTI8Z1UTFLJ4yb0psS2cG6CP0B0tJ6JVJ4iLPj8Mc6l7X_rT4lajoXS21uiInrDb432CxVZKFRYBloj2yQSlMQmv16XouO-ElFjm4YB24EGgD6sF2oRLzB0DE_3XTA3NxzBrsKUgSId8vN598BiWNI4pRrhZNrFlVBJ2yN_4I-0JKte5uyuFIl_0e14QwYMtKtjS_ONnoSS42LwA"/>
+<div class="absolute top-2 left-2 flex items-center gap-1">
+<span class="text-mono-badge font-mono-badge px-1.5 py-0.5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all text-on-surface">9:16 TikTok</span>
+</div>
+<div class="absolute top-2 right-2">
+<label class="flex items-center justify-center w-5 h-5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all cursor-pointer">
+<input checked="" class="w-3.5 h-3.5 rounded bg-surface-container-lowest text-primary-container border-outline-variant focus:ring-0 focus:ring-offset-0" type="checkbox"/>
+</label>
+</div>
+<div class="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-container-lowest/90 backdrop-blur-md hairline-all border-secondary/40">
+<span class="material-symbols-outlined text-secondary text-[12px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-mono-badge font-mono-badge text-secondary">Ad Policy Compliant</span>
+</div>
+</div>
+<div class="p-space-xs flex flex-col gap-1.5 bg-surface-container-low">
+<div class="flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline truncate">#LATENT-SEED-9022</span>
+<span class="text-mono-badge font-mono-badge text-primary bg-primary/10 px-1 rounded">Variance 0.6</span>
+</div>
+<div class="flex items-center justify-between pt-1 hairline-b border-t border-outline-variant/20">
+<span class="text-body-sm font-body-sm text-on-surface truncate">Neural Backbone Pulse</span>
+<button class="text-outline hover:text-on-surface" title="Inspect Asset">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Asset Card 3 (1:1 Feed Box) -->
+<div class="bg-surface-container-low rounded-lg hairline-all overflow-hidden flex flex-col group hover:border-outline-variant transition-all">
+<div class="relative aspect-square bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="An abstract geometric 3D visualization representing continuous database optimization and algorithmic revenue growth. Solid matte charcoal polyhedral shapes are accented by precise neon violet bevel lines and glowing emerald status spheres. High contrast, dark mode minimalism with soft ambient floor reflections." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlbGd5R8ZjiUTmJYJ5ke49ye29xVnkRxfgIdbut2KmbI4MFuTpaB05JzwyaKVikPhe39SbkCfoVJJ4KaAFHJqAYrLi3JVOC6OIOdmAETejyk649MUdOFdiHprV7-wZklvlKiugfQcw9SMwv41JmzWrVYbboJMByVcjE_l8DPt08g_mQGtvYtWwZ0DF9m1IygPCxXOoHB649LLiMO1Ezz4Ps84ApG8jPG46CRdTXoOg0e73kvsnz5eAqQ"/>
+<div class="absolute top-2 left-2 flex items-center gap-1">
+<span class="text-mono-badge font-mono-badge px-1.5 py-0.5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all text-on-surface">1:1 Feed</span>
+</div>
+<div class="absolute top-2 right-2">
+<label class="flex items-center justify-center w-5 h-5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all cursor-pointer">
+<input checked="" class="w-3.5 h-3.5 rounded bg-surface-container-lowest text-primary-container border-outline-variant focus:ring-0 focus:ring-offset-0" type="checkbox"/>
+</label>
+</div>
+<div class="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-container-lowest/90 backdrop-blur-md hairline-all border-secondary/40">
+<span class="material-symbols-outlined text-secondary text-[12px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-mono-badge font-mono-badge text-secondary">Ad Policy Compliant</span>
+</div>
+</div>
+<div class="p-space-xs flex flex-col gap-1.5 bg-surface-container-low">
+<div class="flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline truncate">#LATENT-SEED-9023</span>
+<span class="text-mono-badge font-mono-badge text-primary bg-primary/10 px-1 rounded">Variance 0.3</span>
+</div>
+<div class="flex items-center justify-between pt-1 hairline-b border-t border-outline-variant/20">
+<span class="text-body-sm font-body-sm text-on-surface truncate">Algorithmic Bandits</span>
+<button class="text-outline hover:text-on-surface" title="Inspect Asset">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Asset Card 4 (1:1 Feed Box) -->
+<div class="bg-surface-container-low rounded-lg hairline-all overflow-hidden flex flex-col group hover:border-outline-variant transition-all">
+<div class="relative aspect-square bg-surface-container-lowest overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="A minimalist architectural studio view of a modern workstation with clean glass screens displaying real-time marketing analytics charts and attribution graphs. The room is enveloped in deep charcoal tones with subtle purple ambient perimeter backlighting. Pure, monastic, and instrument-grade aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCPnEUE4IAifG70ERWtuRx8P-QBU5yzZripPEytdsO0wYSeRYR82B7LyABsXJAfGNZdOJHqVjrBSsIsrQ2BUQWfEzAh8nqhqumMFupuK1gYwhI8_k15wkqHa9fedOhw-je9S20kVgYiks6Iby57W-AtoBxXpNQ8bc6e1QC_wFw_aLbVDtVDN1UQbzYrCAPG9F6w5FA7q1R6bdMleRFK4v2x9ari1gvcKwWOVRB0TxKy9vhsYb3sn5BTg"/>
+<div class="absolute top-2 left-2 flex items-center gap-1">
+<span class="text-mono-badge font-mono-badge px-1.5 py-0.5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all text-on-surface">1:1 Feed</span>
+</div>
+<div class="absolute top-2 right-2">
+<label class="flex items-center justify-center w-5 h-5 rounded bg-surface-container-lowest/80 backdrop-blur-md hairline-all cursor-pointer">
+<input class="w-3.5 h-3.5 rounded bg-surface-container-lowest text-primary-container border-outline-variant focus:ring-0 focus:ring-offset-0" type="checkbox"/>
+</label>
+</div>
+<div class="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-container-lowest/90 backdrop-blur-md hairline-all border-secondary/40">
+<span class="material-symbols-outlined text-secondary text-[12px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-mono-badge font-mono-badge text-secondary">Ad Policy Compliant</span>
+</div>
+</div>
+<div class="p-space-xs flex flex-col gap-1.5 bg-surface-container-low">
+<div class="flex items-center justify-between">
+<span class="text-mono-sm font-mono-sm text-outline truncate">#LATENT-SEED-9024</span>
+<span class="text-mono-badge font-mono-badge text-primary bg-primary/10 px-1 rounded">Variance 0.5</span>
+</div>
+<div class="flex items-center justify-between pt-1 hairline-b border-t border-outline-variant/20">
+<span class="text-body-sm font-body-sm text-on-surface truncate">Architectural Analytics UI</span>
+<button class="text-outline hover:text-on-surface" title="Inspect Asset">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Contextual Status Bar -->
+<footer class="mt-space-sm mb-space-md py-space-xs px-space-sm bg-surface-container-low hairline-all rounded-lg flex items-center justify-between text-mono-sm font-mono-sm text-outline">
+<div class="flex items-center gap-4">
+<span class="flex items-center gap-1.5 text-on-surface">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+          Cluster GPU: 4x H100 SXM5 Online
+        </span>
+<span>Checkpoint: latent-ad-gen-production-release-v4</span>
+</div>
+<div class="flex items-center gap-3">
+<span>Region: us-east-1</span>
+<span>Secure Enclave TLS 1.3</span>
+</div>
+</footer>
+</main>
+</body></html>

@@ -184,17 +184,17 @@ function AdUnitCard({
 
   return (
     <article
-      className={`rounded-lg border p-3 ${
+      className={`ui-panel relative p-4 ${
         unit.criticalCount > 0
-          ? "border-red-200 bg-red-50/40"
+          ? "border-[var(--status-danger-border)]"
           : unit.issueCount > 0
-            ? "border-amber-200 bg-amber-50/30"
-            : "border-emerald-200 bg-emerald-50/30"
+            ? "border-[var(--status-alert-border)]"
+            : ""
       }`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {rank != null ? (
-          <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white">
+          <span className="rounded-full border border-[var(--border)] bg-[var(--bg-high)] px-2 py-0.5 text-xs font-medium text-[var(--fg)]">
             #{rank}
           </span>
         ) : null}
@@ -211,7 +211,7 @@ function AdUnitCard({
       <div className="flex flex-col gap-2 text-sm">
         {[headline, headline2, description].filter(Boolean).map((part) => (
           <label key={part!.id} className="flex flex-col gap-0.5">
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-[var(--fg-muted)]">
               {TYPE_LABEL[part!.type] ?? part!.type}
             </span>
             {compact ? (
@@ -227,10 +227,10 @@ function AdUnitCard({
           </label>
         ))}
         {extras.length > 0 ? (
-          <ul className="mt-1 flex flex-col gap-1 text-xs text-zinc-600">
+          <ul className="mt-1 flex flex-col gap-1 text-xs text-[var(--fg-muted)]">
             {extras.map((part) => (
               <li key={part.id}>
-                <span className="text-zinc-400">{TYPE_LABEL[part.type] ?? part.type}:</span>{" "}
+                <span className="text-[var(--fg-faint)]">{TYPE_LABEL[part.type] ?? part.type}:</span>{" "}
                 {drafts[part.id] ?? part.text}
               </li>
             ))}
@@ -282,37 +282,45 @@ export function CreativesPanel({
   const criticalIssues = issueGroups.filter((g) => g.level === "critical").length;
 
   return (
-    <section className="mb-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-[0_1px_2px_rgba(24,24,27,0.04)]">
-      <h2 className="mb-2 font-medium">Объявления</h2>
-      <p className="mb-3 text-sm text-zinc-600">
-        {data?.task
-          ? `Копирайтинг: ${data.task.status}${data.task.error ? ` · ${data.task.error}` : ""}`
-          : "Ещё не запускалось"}
-        {data?.validationTask
-          ? ` · Валидация: ${data.validationTask.status}`
-          : ""}
-        {data?.quality
-          ? ` · принято без правок: объявления ${formatShare(data.quality.creatives.acceptedShare)}, кластеры ${formatShare(data.quality.clusters.acceptedShare)}`
-          : ""}
-      </p>
+    <section className="ui-panel relative mb-4 p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Варианты объявлений</h2>
+          <p className="mt-1 text-sm text-[var(--fg-muted)]">
+            {data?.task
+              ? `Копирайтинг: ${data.task.status}${data.task.error ? ` · ${data.task.error}` : ""}`
+              : "Ещё не запускалось"}
+            {data?.validationTask
+              ? ` · Валидация: ${data.validationTask.status}`
+              : ""}
+          </p>
+        </div>
+        <button
+          className={btnClass("primary")}
+          onClick={onGenerate}
+          disabled={generateDisabled}
+        >
+          {generatePending ? "Пишем объявления…" : generateLabel}
+        </button>
+      </div>
 
       {data && data.creatives.length > 0 ? (
-        <div className="mb-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-          <div className="rounded border border-zinc-100 p-2">
-            <p className="text-xs text-zinc-500">Кластеров</p>
-            <p className="font-medium">{clusters.length}</p>
+        <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <div className="ui-kpi">
+            <p className="text-[11px] text-[var(--outline)]">Кластеров</p>
+            <p className="font-mono text-xl font-semibold">{clusters.length}</p>
           </div>
-          <div className="rounded border border-zinc-100 p-2">
-            <p className="text-xs text-zinc-500">Вариантов A/B</p>
-            <p className="font-medium">{adUnits.length}</p>
+          <div className="ui-kpi">
+            <p className="text-[11px] text-[var(--outline)]">Вариантов A/B</p>
+            <p className="font-mono text-xl font-semibold">{adUnits.length}</p>
           </div>
-          <div className="rounded border border-zinc-100 p-2">
-            <p className="text-xs text-zinc-500">Без замечаний</p>
-            <p className="font-medium">{cleanUnits}</p>
+          <div className="ui-kpi">
+            <p className="text-[11px] text-[var(--outline)]">Без замечаний</p>
+            <p className="font-mono text-xl font-semibold text-[var(--secondary)]">{cleanUnits}</p>
           </div>
-          <div className="rounded border border-zinc-100 p-2">
-            <p className="text-xs text-zinc-500">Типов замечаний</p>
-            <p className="font-medium">
+          <div className="ui-kpi">
+            <p className="text-[11px] text-[var(--outline)]">Типов замечаний</p>
+            <p className="font-mono text-xl font-semibold">
               {issueGroups.length}
               {criticalIssues > 0 ? ` · ${criticalIssues} крит.` : ""}
             </p>
@@ -320,25 +328,18 @@ export function CreativesPanel({
         </div>
       ) : null}
 
-      <button
-        className={btnClass("primary", "mb-4")}
-        onClick={onGenerate}
-        disabled={generateDisabled}
-      >
-        {generatePending ? "Пишем объявления…" : generateLabel}
-      </button>
-
       {!data || data.creatives.length === 0 ? (
-        <EmptyState title="Сначала соберите семантику на вкладке «Семантика»">
-          Без кластеров тексты писать не из чего. Нажмите «Собрать семантику»,
-          затем вернитесь и нажмите «Сгенерировать объявления».
+        <EmptyState title="Сначала соберите семантику на вкладке «Семантика · План»">
+          Без кластеров тексты писать не из чего. Откройте «Семантика · План»,
+          нажмите «Собрать семантику», затем вернитесь и нажмите
+          «Сгенерировать объявления».
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-6">
           {topUnits.length > 0 ? (
             <div>
               <h3 className="mb-2 text-sm font-semibold">Топ‑5 лучших вариантов</h3>
-              <p className="mb-3 text-xs text-zinc-500">
+              <p className="mb-3 text-xs text-[var(--fg-muted)]">
                 Ранжирование по полноте объявления и количеству замечаний валидации.
               </p>
               <div className="grid gap-3 lg:grid-cols-2">
@@ -367,23 +368,23 @@ export function CreativesPanel({
                   return (
                     <div
                       key={clusterName}
-                      className="rounded border border-zinc-100"
+                      className="rounded border border-[var(--border)]"
                     >
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--bg-mid)]"
                         onClick={() =>
                           setExpandedCluster(open ? null : clusterName)
                         }
                       >
                         <span className="font-medium">{clusterName}</span>
-                        <span className="text-xs text-zinc-500">
+                        <span className="text-xs text-[var(--fg-muted)]">
                           {units.length} вар. · лучший: {best?.abGroup ?? "—"}
                           {best && best.issueCount === 0 ? " · ок" : ""}
                         </span>
                       </button>
                       {open ? (
-                        <div className="grid gap-2 border-t border-zinc-100 p-3 sm:grid-cols-2">
+                        <div className="grid gap-2 border-t border-[var(--border)] p-3 sm:grid-cols-2">
                           {units.map((unit) => (
                             <AdUnitCard
                               key={unit.key}
@@ -409,7 +410,7 @@ export function CreativesPanel({
                 <h3 className="text-sm font-semibold">Замечания валидации</h3>
                 <button
                   type="button"
-                  className="text-xs text-zinc-500 underline"
+                  className="text-xs text-[var(--fg-muted)] underline"
                   onClick={() => setShowAllIssues((v) => !v)}
                 >
                   {showAllIssues
@@ -422,7 +423,7 @@ export function CreativesPanel({
                   (group) => (
                     <li
                       key={group.key}
-                      className="flex flex-wrap items-start gap-2 rounded border border-zinc-100 px-2 py-1.5"
+                      className="flex flex-wrap items-start gap-2 rounded border border-[var(--border)] px-2 py-1.5"
                     >
                       <IssueBadge level={group.level} autoFixed={false} />
                       <span className="flex-1">{group.message}</span>
@@ -434,7 +435,7 @@ export function CreativesPanel({
                 )}
               </ul>
               {!showAllIssues && issueGroups.length > 5 ? (
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-[var(--fg-muted)]">
                   Ещё {issueGroups.length - 5} типов замечаний — нажмите «Показать все».
                 </p>
               ) : null}
@@ -455,7 +456,7 @@ export function CreativesPanel({
               <div className="overflow-x-auto">
                 <table className="ui-table">
                   <thead>
-                    <tr className="text-zinc-500">
+                    <tr className="text-[var(--fg-muted)]">
                       <th className="py-1 pr-2">Кластер</th>
                       <th className="py-1 pr-2">A/B</th>
                       <th className="py-1 pr-2">Тип</th>
@@ -467,7 +468,7 @@ export function CreativesPanel({
                     {data.creatives.map((row) => (
                       <tr
                         key={row.id}
-                        className="border-t border-zinc-100 align-top"
+                        className="border-t border-[var(--border)] align-top"
                       >
                         <td className="py-2 pr-2">{row.clusterName}</td>
                         <td className="py-2 pr-2">{row.abGroup}</td>
@@ -486,7 +487,7 @@ export function CreativesPanel({
                         </td>
                         <td className="py-2">
                           {row.issues.length === 0 ? (
-                            <span className="text-zinc-400">—</span>
+                            <span className="text-[var(--fg-faint)]">—</span>
                           ) : (
                             <span className="flex flex-wrap gap-1">
                               {row.issues.map((issue) => (

@@ -1,0 +1,11 @@
+{
+  "fixtureId": "orthodontics-clinic",
+  "source": "ideal_gold",
+  "extract_masks": [],
+  "near_intent_phrases": [
+    "брекеты для взрослых",
+    "лечение кариеса цена",
+    "стоимость установки брекетов",
+    "записаться на брекеты"
+  ]
+}

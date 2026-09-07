@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { ProjectsService } from '../projects/projects.service';
 import { verifyOAuthState } from '../security/oauth-state';
+import { ConnectionVerificationFailedError } from '../projects/connection-verification.error';
 
 @Controller('oauth')
 export class OauthController {
@@ -51,7 +52,12 @@ export class OauthController {
       projectId = payload.projectId;
       await this.projects.completeOAuth(state, code);
       return res.redirect(`${webOrigin}/projects/${projectId}?oauth=connected`);
-    } catch {
+    } catch (err) {
+      if (err instanceof ConnectionVerificationFailedError) {
+        return res.redirect(
+          `${webOrigin}/projects/${err.projectId}?oauth=needs_reconnect`,
+        );
+      }
       const target = projectId
         ? `${webOrigin}/projects/${projectId}?oauth=error`
         : fallback;

@@ -10,7 +10,9 @@ export type BackgroundJobKind =
   | "autopilot"
   | "ops_alerts"
   | "optimization_scan"
-  | "optimization_run";
+  | "optimization_run"
+  | "campaign_sync_scan"
+  | "campaign_sync_run";
 
 export type PipelineJob = {
   organizationId: string;

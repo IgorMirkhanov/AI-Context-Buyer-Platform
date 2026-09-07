@@ -1,6 +1,9 @@
 import {
   AdPlatformConnector,
+  AccountCampaignSummary,
+  connectionVerificationMessage,
   Credentials,
+  ConnectionVerificationResult,
   KeywordIdea,
   OAuthUrl,
   PerformanceDateRange,
@@ -25,6 +28,7 @@ export type GoogleOAuthConfig = {
   developerToken: string;
   loginCustomerId?: string;
   scope?: string;
+  mock?: boolean;
 };
 
 export type GoogleTokenResponse = {
@@ -39,6 +43,34 @@ export interface GoogleOAuthClient {
   exchangeAuthorizationCode(code: string): Promise<GoogleTokenResponse>;
   refreshAccessToken(refreshToken: string): Promise<GoogleTokenResponse>;
   listCustomerIds(accessToken: string): Promise<string[]>;
+}
+
+export function createMockGoogleOAuthClient(
+  config?: Pick<GoogleOAuthConfig, "loginCustomerId">,
+): GoogleOAuthClient {
+  const customerId =
+    config?.loginCustomerId?.replace(/-/g, "") || "1112223333";
+  return {
+    async exchangeAuthorizationCode(): Promise<GoogleTokenResponse> {
+      return {
+        access_token: "mock-google-access",
+        refresh_token: "mock-google-refresh",
+        expires_in: 3600,
+        scope: GOOGLE_ADS_SCOPE,
+      };
+    },
+    async refreshAccessToken(): Promise<GoogleTokenResponse> {
+      return {
+        access_token: "mock-google-access-rotated",
+        refresh_token: "mock-google-refresh",
+        expires_in: 3600,
+        scope: GOOGLE_ADS_SCOPE,
+      };
+    },
+    async listCustomerIds(): Promise<string[]> {
+      return [customerId];
+    },
+  };
 }
 
 export function createGoogleOAuthClient(
@@ -93,6 +125,15 @@ export class GoogleAdsConnector implements AdPlatformConnector {
   ) {}
 
   buildAuthorizeUrl(state: string): OAuthUrl {
+    if (this.config.mock) {
+      const url = new URL(this.config.redirectUri);
+      url.searchParams.set("code", "mock-google");
+      url.searchParams.set("state", state);
+      return { url: url.toString() };
+    }
+    if (!this.config.clientId?.trim()) {
+      throw new Error("GOOGLE_ADS_CLIENT_ID is required when GOOGLE_ADS_MOCK is off");
+    }
     const params = new URLSearchParams({
       response_type: "code",
       client_id: this.config.clientId,
@@ -325,6 +366,27 @@ export class GoogleAdsConnector implements AdPlatformConnector {
     auth?: PlatformAuth,
   ): Promise<void> {
     return this.ensurePaused(projectId, campaignId, auth);
+  }
+
+  async fetchAllAccountCampaigns(
+    projectId: string,
+    auth?: PlatformAuth,
+  ): Promise<AccountCampaignSummary[]> {
+    this.requireProject(projectId);
+    return this.api.searchAccountCampaigns(toGoogleAuth(auth, projectId));
+  }
+
+  async verifyConnection(
+    projectId: string,
+    auth?: PlatformAuth,
+  ): Promise<ConnectionVerificationResult> {
+    this.requireProject(projectId);
+    try {
+      await this.api.probeConnection(toGoogleAuth(auth, projectId));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: connectionVerificationMessage(err) };
+    }
   }
 
   async ensurePaused(

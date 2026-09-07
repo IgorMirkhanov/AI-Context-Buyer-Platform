@@ -27,6 +27,26 @@ describe('GoogleAdsConnector OAuth', () => {
     jest.clearAllMocks();
   });
 
+  it('points mock OAuth at the local callback instead of Google', async () => {
+    const mock = new GoogleAdsConnector(
+      {
+        clientId: 'e2e-mock',
+        clientSecret: 'e2e-mock',
+        redirectUri: 'http://localhost:3001/oauth/google-ads/callback',
+        developerToken: 'dev-token',
+        mock: true,
+      },
+      oauth,
+    );
+    const { url } = await mock.authorize('signed-state');
+    const parsed = new URL(url);
+    expect(parsed.origin + parsed.pathname).toBe(
+      'http://localhost:3001/oauth/google-ads/callback',
+    );
+    expect(parsed.searchParams.get('code')).toBe('mock-google');
+    expect(parsed.searchParams.get('state')).toBe('signed-state');
+  });
+
   it('builds an authorize URL with client_id, offline access and adwords scope', async () => {
     const { url } = await connector.authorize('project-1');
     const parsed = new URL(url);

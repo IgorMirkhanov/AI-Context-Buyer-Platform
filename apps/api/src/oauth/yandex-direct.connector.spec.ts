@@ -45,15 +45,24 @@ describe('YandexDirectConnector OAuth', () => {
     expect(parsed.searchParams.get('state')).toBe('signed-state');
   });
 
-  it('builds an authorize URL with client_id and state', async () => {
-    const { url } = await connector.authorize('project-1');
-    const parsed = new URL(url);
-    expect(parsed.origin + parsed.pathname).toBe(
-      'https://oauth.yandex.ru/authorize',
+  it('uses direct:api in authorize URL when connector config omits scope (code default, not env)', async () => {
+    const withoutScopeConfig = {
+      clientId: 'test-client',
+      clientSecret: 'test-secret',
+      redirectUri: 'http://localhost:3001/oauth/yandex/callback',
+    };
+    expect(withoutScopeConfig).not.toHaveProperty('scope');
+
+    const connectorWithoutScope = new YandexDirectConnector(
+      withoutScopeConfig,
+      oauth,
     );
+    const { url } = await connectorWithoutScope.authorize('project-1');
+    const parsed = new URL(url);
+
+    expect(parsed.searchParams.get('scope')).toBe('direct:api');
     expect(parsed.searchParams.get('client_id')).toBe('test-client');
     expect(parsed.searchParams.get('state')).toBe('project-1');
-    expect(parsed.searchParams.get('response_type')).toBe('code');
   });
 
   it('exchanges the callback code via the mocked provider', async () => {
@@ -80,6 +89,22 @@ describe('YandexDirectConnector OAuth', () => {
     expect(creds.scopes).toBe('direct:api');
   });
 
+  it('falls back to direct:api when Yandex omits scope in token response', async () => {
+    (oauth.exchangeAuthorizationCode as jest.Mock).mockResolvedValue({
+      access_token: 'access-from-yandex',
+      refresh_token: 'refresh-from-yandex',
+      expires_in: 3600,
+    });
+    (oauth.getAccountLogin as jest.Mock).mockResolvedValue('agency-login');
+
+    const creds = await connector.handleOAuthCallback(
+      'project-1',
+      'auth-code-from-yandex',
+    );
+
+    expect(creds.scopes).toBe('direct:api');
+  });
+
   it('fails closed when the provider omits access_token', async () => {
     (oauth.exchangeAuthorizationCode as jest.Mock).mockResolvedValue({
       refresh_token: 'only-refresh',
@@ -102,7 +127,20 @@ describe('YandexDirectConnector OAuth', () => {
     expect(oauth.refreshAccessToken).toHaveBeenCalledWith('existing-refresh');
     expect(creds.accessToken).toBe('rotated-access');
     expect(creds.refreshToken).toBe('existing-refresh');
+    expect(creds.scopes).toBe('direct:api');
     expect(creds.externalAccountId).toBe('');
+  });
+
+  it('falls back to direct:api on refresh when Yandex omits scope', async () => {
+    (oauth.refreshAccessToken as jest.Mock).mockResolvedValue({
+      access_token: 'rotated-access',
+      expires_in: 3600,
+    });
+    const creds = await connector.refreshAccessToken(
+      'project-1',
+      'existing-refresh',
+    );
+    expect(creds.scopes).toBe('direct:api');
   });
 
   it('creates a paused campaign through the Direct API mock', async () => {

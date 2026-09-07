@@ -20,6 +20,13 @@ export type GooglePerformanceRow = {
   conversions: number;
 };
 
+export type GoogleAccountCampaignRow = {
+  externalCampaignId: string;
+  name: string;
+  status: "active" | "paused" | "archived";
+  dailyBudget: number | null;
+};
+
 export interface GoogleAdsApi {
   createBudget(
     auth: GoogleAdsAuth,
@@ -68,6 +75,8 @@ export interface GoogleAdsApi {
     auth: GoogleAdsAuth,
     range: { from: string; to: string; campaignIds: string[] },
   ): Promise<GooglePerformanceRow[]>;
+  searchAccountCampaigns(auth: GoogleAdsAuth): Promise<GoogleAccountCampaignRow[]>;
+  probeConnection(auth: GoogleAdsAuth): Promise<void>;
   getBudgetResource(
     auth: GoogleAdsAuth,
     campaignId: string,
@@ -296,6 +305,45 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     });
   }
 
+  async searchAccountCampaigns(
+    auth: GoogleAdsAuth,
+  ): Promise<GoogleAccountCampaignRow[]> {
+    const payload = await this.request<{
+      results?: Array<{
+        campaign?: {
+          id?: string;
+          name?: string;
+          status?: string;
+        };
+        campaignBudget?: {
+          amountMicros?: string;
+        };
+      }>;
+    }>(auth, `customers/${auth.customerId}/googleAds:search`, {
+      query:
+        "SELECT campaign.id, campaign.name, campaign.status, campaign_budget.amount_micros FROM campaign",
+    });
+    return (payload.results ?? []).map((row) => ({
+      externalCampaignId: String(row.campaign?.id ?? ""),
+      name: row.campaign?.name?.trim() || `Кампания ${row.campaign?.id ?? ""}`,
+      status: mapGoogleCampaignStatus(row.campaign?.status),
+      dailyBudget:
+        row.campaignBudget?.amountMicros != null
+          ? Number(row.campaignBudget.amountMicros) / 1_000_000
+          : null,
+    }));
+  }
+
+  async probeConnection(auth: GoogleAdsAuth): Promise<void> {
+    await this.request(
+      auth,
+      `customers/${auth.customerId}/googleAds:search`,
+      {
+        query: "SELECT campaign.id FROM campaign LIMIT 1",
+      },
+    );
+  }
+
   async getBudgetResource(
     auth: GoogleAdsAuth,
     campaignId: string,
@@ -418,6 +466,15 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
   failAt: string | null = null;
   budgets = new Map<string, string>();
 
+  accountCampaigns: GoogleAccountCampaignRow[] = [
+    {
+      externalCampaignId: "7001",
+      name: "Google кампания",
+      status: "paused",
+      dailyBudget: 3000,
+    },
+  ];
+
   private take(method: string, payload: unknown): string {
     this.calls.push({ method, payload });
     if (this.failAt === method) {
@@ -518,6 +575,27 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
     }));
   }
 
+  async searchAccountCampaigns(
+    auth: GoogleAdsAuth,
+  ): Promise<GoogleAccountCampaignRow[]> {
+    requireGoogleAuth(auth);
+    this.calls.push({ method: "fetchAllAccountCampaigns", payload: {} });
+    return this.accountCampaigns.map((row) => ({ ...row }));
+  }
+
+  async probeConnection(auth: GoogleAdsAuth): Promise<void> {
+    requireGoogleAuth(auth);
+    this.calls.push({ method: "verifyConnection", payload: {} });
+    if (this.failAt === "verifyConnection") {
+      throw new PlatformApiError(
+        "Request had insufficient authentication scopes",
+        "verifyConnection",
+        "HTTP 403",
+        false,
+      );
+    }
+  }
+
   async getBudgetResource(
     auth: GoogleAdsAuth,
     campaignId: string,
@@ -558,6 +636,19 @@ function requireGoogleAuth(auth: GoogleAdsAuth): void {
       "missing token or customer id",
     );
   }
+}
+
+export function mapGoogleCampaignStatus(
+  status?: string,
+): "active" | "paused" | "archived" {
+  const normalized = (status ?? "").toUpperCase();
+  if (normalized === "REMOVED") {
+    return "archived";
+  }
+  if (normalized === "ENABLED") {
+    return "active";
+  }
+  return "paused";
 }
 
 export function humanizeGoogleError(details: string): string {

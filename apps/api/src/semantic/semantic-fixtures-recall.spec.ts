@@ -32,6 +32,22 @@ const FIXTURE_RECALL_BASELINE: Record<string, { recall: number; commercialRecall
   'accounting-b2b': { recall: 14 / 18, commercialRecall: 8 / 12 },
 };
 
+/** Разумный потолок ключей на «реальных» фикстурах (baseline ~14–21, не 54–81). */
+const REAL_FIXTURE_AGENT_KEY_LIMIT: Record<string, number> = {
+  'orthodontics-clinic': 28,
+  'accounting-b2b': 32,
+};
+
+function hasConsecutiveDuplicateTokens(phrase: string): boolean {
+  const tokens = phrase.toLowerCase().split(/\s+/).filter(Boolean);
+  for (let i = 1; i < tokens.length; i += 1) {
+    if (tokens[i] === tokens[i - 1]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 describe('semantic QA fixtures — commercial gold recall', () => {
   const ideas = new MockKeywordIdeasProvider();
   const fixtures = loadFixtures();
@@ -61,6 +77,14 @@ describe('semantic QA fixtures — commercial gold recall', () => {
 
       expect(coverage.recall).toBe(baseline.recall);
       expect(commercial.commercialRecall).toBe(baseline.commercialRecall);
+
+      for (const phrase of phrases) {
+        expect(hasConsecutiveDuplicateTokens(phrase)).toBe(false);
+      }
+      const keyLimit = REAL_FIXTURE_AGENT_KEY_LIMIT[id];
+      if (keyLimit != null) {
+        expect(phrases.length).toBeLessThanOrEqual(keyLimit);
+      }
     },
   );
 });

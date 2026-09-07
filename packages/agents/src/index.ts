@@ -46,7 +46,7 @@ export {
   cosine,
 } from "./semantic/embeddings";
 export type { EmbeddingsClient, VectorIndex } from "./semantic/embeddings";
-export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword, isCommercialKeyword, combinedGeoCommercialMasks, geoLabelFromBriefCode, COMMERCIAL_TRIGGERS } from "./semantic/heuristics";
+export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword, isCommercialKeyword, combinedGeoCommercialMasks, geoLabelFromBriefCode, collapseConsecutiveDuplicateTokens, cleanServiceMask, servicePhrasesFromLanding, COMMERCIAL_TRIGGERS } from "./semantic/heuristics";
 export {
   compareSemanticQa,
   compareCommercialGoldRecall,

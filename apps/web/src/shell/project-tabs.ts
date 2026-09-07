@@ -1,8 +1,7 @@
 export const PROJECT_TABS = [
   { id: "brief", label: "Бриф" },
   { id: "analysis", label: "Анализ" },
-  { id: "semantic", label: "Семантика" },
-  { id: "plan", label: "План" },
+  { id: "plan", label: "Семантика · План" },
   { id: "ads", label: "Объявления" },
   { id: "campaign", label: "Кампания" },
   { id: "analytics", label: "Аналитика" },
@@ -14,7 +13,9 @@ export const PROJECT_TABS = [
 
 export type ProjectTabId = (typeof PROJECT_TABS)[number]["id"];
 
+/** Legacy `?tab=semantic` opens the unified plan + semantics screen. */
 export function parseProjectTab(raw: string | null): ProjectTabId {
+  if (raw === "semantic") return "plan";
   const found = PROJECT_TABS.find((item) => item.id === raw);
   return found?.id ?? "brief";
 }
