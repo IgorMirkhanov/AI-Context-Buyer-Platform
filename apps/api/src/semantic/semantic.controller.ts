@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload';
 import { ProjectAccessGuard } from '../tenancy/project-access.guard';
@@ -19,6 +20,7 @@ import { ResolveNegativeSuggestionDto } from './dto/resolve-negative-suggestion.
 
 @Controller('projects/:id/semantic')
 @UseGuards(JwtAuthGuard, ProjectAccessGuard)
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class SemanticController {
   constructor(private readonly semantic: SemanticService) {}
 

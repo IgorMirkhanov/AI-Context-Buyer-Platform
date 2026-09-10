@@ -14,9 +14,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          # Caches npm download cache only — never restore a stale node_modules
+          # across lockfile versions. Install is always `npm ci` (see docs/14).
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (lockfile-exact, clean tree)
         run: npm ci
 
       - name: Generate Prisma client
@@ -61,9 +63,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          # Caches npm download cache only — never restore a stale node_modules
+          # across lockfile versions. Install is always `npm ci` (see docs/14).
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (lockfile-exact, clean tree)
         run: npm ci
 
       - name: Generate Prisma client

@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { IsString, MinLength } from 'class-validator';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload';
 import { ProjectAccessGuard } from '../tenancy/project-access.guard';
@@ -23,6 +24,7 @@ class UpdateCreativeDto {
 
 @Controller('projects/:id/creatives')
 @UseGuards(JwtAuthGuard, ProjectAccessGuard)
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class CreativesController {
   constructor(private readonly creatives: CreativesService) {}
 

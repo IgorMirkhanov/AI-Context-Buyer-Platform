@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -28,6 +29,8 @@ import { ConnectAttributionDto } from './dto/connect-attribution.dto';
 
 @Injectable()
 export class AttributionService {
+  private readonly log = new Logger(AttributionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -214,6 +217,11 @@ export class AttributionService {
     const records = this.router
       .forProvider(providerRaw)
       .parseInbound(projectId, payload);
+    // Metadata only — never log raw CRM payload (phones/emails).
+    const eventTypes = [...new Set(records.map((r) => r.type))].sort();
+    this.log.log(
+      `inbound webhook projectId=${projectId} provider=${providerRaw} events=${records.length} types=${eventTypes.join(',') || 'none'}`,
+    );
     const saved = await this.persistRecords(projectId, providerRaw, records);
     return { ok: true, saved };
   }

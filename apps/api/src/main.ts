@@ -4,7 +4,14 @@ import { config as loadEnv } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { validateEnv } from './config';
+import { assertStartupSecrets } from './security/startup-secrets';
+import { resolveCorsOrigin } from './security/cors-origin';
+import { ProductionSafeExceptionFilter } from './security/production-safe.filter';
+import { JsonLogger } from './logging/json-logger';
+import { requestIdMiddleware } from './logging/request-id.middleware';
 
 function bootstrapEnv(): void {
   const candidates = [
@@ -20,12 +27,27 @@ function bootstrapEnv(): void {
 }
 
 bootstrapEnv();
+validateEnv(process.env);
+// Keep legacy secret checks for non-production (length / hex|base64 key).
+if ((process.env.NODE_ENV ?? '').toLowerCase() !== 'production') {
+  assertStartupSecrets(process.env);
+}
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const origin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    logger: new JsonLogger(),
+  });
+  app.useLogger(new JsonLogger());
+  const origin = resolveCorsOrigin(
+    process.env.NODE_ENV,
+    process.env.WEB_ORIGIN,
+  );
 
+  app.use(helmet());
+  app.use(requestIdMiddleware);
   app.enableCors({ origin, credentials: true });
+  app.useGlobalFilters(new ProductionSafeExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

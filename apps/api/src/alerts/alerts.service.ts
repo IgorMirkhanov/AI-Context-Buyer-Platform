@@ -17,6 +17,7 @@ import {
 import { isPlatformRateLimitError } from '@context-buyer/connectors';
 import { PrismaService } from '../prisma/prisma.service';
 import { PipelineQueue } from '../pipeline/pipeline.queue';
+import { notifyAlertWebhook } from './alert-webhook';
 
 const PIPELINE_AGENTS: AgentType[] = [
   AgentType.semantic,
@@ -194,7 +195,7 @@ export class AlertsService implements OnModuleInit {
       },
     });
     if (existing) return existing;
-    return this.prisma.opsAlert.create({
+    const created = await this.prisma.opsAlert.create({
       data: {
         projectId,
         kind: draft.kind as OpsAlertKind,
@@ -202,6 +203,14 @@ export class AlertsService implements OnModuleInit {
         detail: draft.detail,
       },
     });
+    // Optional Slack/Telegram; missing ALERT_WEBHOOK_URL is a silent no-op.
+    void notifyAlertWebhook(this.config.get<string>('ALERT_WEBHOOK_URL'), {
+      projectId,
+      kind: created.kind,
+      title: created.title,
+      detail: created.detail,
+    });
+    return created;
   }
 
   private async requireProject(organizationId: string, projectId: string) {

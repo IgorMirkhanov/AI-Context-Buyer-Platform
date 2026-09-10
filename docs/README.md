@@ -27,9 +27,12 @@
 | 7 | `07_ROADMAP_MVP.md` | Факт-лог этапов 0–17 (таблицы БД и API по каждому) |
 | 8 | `08_CURSOR_RULES.md` | Готовый `.cursorrules` + гайд по работе с Cursor Agent над этим проектом |
 | 9 | `09_ONBOARDING_BRIEF_TEMPLATE.md` | Шаблон брифа/чек-лист данных от рекламщиков и клиентов |
-| 10 | `10_RISKS_AND_OPEN_QUESTIONS.md` | Риски; биллинг как пробел; чеклист живого клиента |
+| 10 | `10_RISKS_AND_OPEN_QUESTIONS.md` | Риски; биллинг не требуется (внутренний продукт); чеклист §7 |
 | 11 | `11_CURSOR_PROMPTS.md` | Исторические промпты 0–5 (не перезапускать этапы 0–17) |
 | 12 | `12_SEMANTIC_QA_BASELINE.md` | Эталоны и baseline метрик Semantic Agent (`npm run qa:semantic`) |
+| 13 | `13_OPTIMIZATION_SCHEDULE.md` | Расписание оптимизации |
+| 14 | `14_PRODUCTION_DEPLOY.md` | Прод-деплой: env, secret manager, порядок api→web, ограничения релиза |
+| 15 | `15_SECURITY_GATE_D3.md` | Результаты security-гейта D3 (audit, guards, rate-limit) |
 
 ## Ключевые решения, зафиксированные в пакете
 
@@ -43,4 +46,5 @@
   картинки — `MediaGenerationConnector`.
 - **Human-in-the-loop:** публикация только из UI (paused). Автопилот — opt-in
   после порога, без создания кампаний.
-- **Биллинг не реализован** (`organizations.plan` — колонка без логики).
+- **Биллинг не требуется** для внутреннего продукта (`organizations.plan` —
+  колонка без логики тарифов; не открытый пробел релиза).

@@ -1,0 +1,102 @@
+# Production compose (manual deploy). Does not replace hosting providers.
+# From repo root:
+#   docker compose --env-file .env.production -f infra/docker-compose.prod.yml up -d
+#
+# Required env (no insecure defaults):
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+#   JWT_SECRET, TOKEN_ENCRYPTION_KEY, WEB_ORIGIN
+#   API_IMAGE, WEB_IMAGE  (e.g. ghcr.io/<owner>/<repo>/api:<sha>)
+# Optional: ALERT_WEBHOOK_URL, OAuth keys, mocks — see .env.production.example
+#
+# Postgres/Redis are internal-only (no host port publish).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ${API_IMAGE:?set API_IMAGE to ghcr.io/.../api:<tag>}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      PIPELINE_QUEUE: bullmq
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?set TOKEN_ENCRYPTION_KEY}
+      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
+      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
+      YANDEX_REDIRECT_URI: ${YANDEX_REDIRECT_URI:-}
+      GOOGLE_ADS_CLIENT_ID: ${GOOGLE_ADS_CLIENT_ID:-}
+      GOOGLE_ADS_CLIENT_SECRET: ${GOOGLE_ADS_CLIENT_SECRET:-}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${GOOGLE_ADS_DEVELOPER_TOKEN:-}
+      GOOGLE_ADS_REDIRECT_URI: ${GOOGLE_ADS_REDIRECT_URI:-}
+      GOOGLE_ADS_MOCK: ${GOOGLE_ADS_MOCK:-0}
+      YANDEX_DIRECT_MOCK: ${YANDEX_DIRECT_MOCK:-}
+      ATTRIBUTION_MOCK: ${ATTRIBUTION_MOCK:-}
+      MEDIA_MOCK: ${MEDIA_MOCK:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERTS_POLL_MS: ${ALERTS_POLL_MS:-3600000}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  web:
+    image: ${WEB_IMAGE:?set WEB_IMAGE to ghcr.io/.../web:<tag>}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  postgres_data:

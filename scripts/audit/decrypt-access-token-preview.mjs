@@ -4,6 +4,9 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { createDecipheriv, scryptSync } from 'crypto';
+import { assertAuditScriptsAllowed } from './assert-local-only.mjs';
+
+assertAuditScriptsAllowed();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '../..');
@@ -67,7 +70,6 @@ try {
   } catch (e) {
     decryptError = e instanceof Error ? e.message : String(e);
   }
-  const preview = plaintext ? plaintext.slice(0, 12) : null;
   const nonPrintable = plaintext
     ? [...plaintext].filter((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) > 0x7e).length
     : null;
@@ -80,8 +82,6 @@ try {
         ciphertextParts: cred.accessTokenEncrypted.split('.').length,
         decryptError,
         plaintextLength: plaintext?.length ?? null,
-        preview,
-        endsWithEllipsis: plaintext && plaintext.length > 12,
         nonPrintableCharCount: nonPrintable,
         looksLikeYandexToken: plaintext ? looksLikeYandexToken(plaintext) : false,
         hypothesis:

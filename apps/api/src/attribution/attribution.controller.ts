@@ -11,6 +11,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AttributionProvider } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload';
@@ -67,7 +68,9 @@ export class AttributionController {
     return this.attribution.collect(req.user.organizationId, id, dto.provider);
   }
 
+  /** CRM webhooks — higher ceiling than default API routes. */
   @Post('attribution/inbound/:projectId')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
   inbound(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Query('provider') provider: string | undefined,

@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AlertsService } from './alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PipelineQueue } from '../pipeline/pipeline.queue';
+import * as alertWebhook from './alert-webhook';
 
 describe('AlertsService', () => {
   const db = {
@@ -20,9 +21,13 @@ describe('AlertsService', () => {
     },
   };
   let service: AlertsService;
+  let configGet: jest.Mock;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    configGet = jest.fn((key: string) =>
+      key === 'ALERT_WEBHOOK_URL' ? 'https://hooks.example/a' : 0,
+    );
     db.project.findFirst.mockResolvedValue({
       id: 'p1',
       organizationId: 'org-a',
@@ -45,7 +50,7 @@ describe('AlertsService', () => {
       providers: [
         AlertsService,
         { provide: PrismaService, useValue: db },
-        { provide: ConfigService, useValue: { get: () => 0 } },
+        { provide: ConfigService, useValue: { get: configGet } },
         {
           provide: PipelineQueue,
           useValue: { register: jest.fn(), schedule: jest.fn() },
@@ -74,6 +79,21 @@ describe('AlertsService', () => {
         kind: OpsAlertKind.pipeline_failed,
       }),
     });
+  });
+
+  it('notifies ALERT_WEBHOOK_URL once when a critical alert is created', async () => {
+    const notify = jest
+      .spyOn(alertWebhook, 'notifyAlertWebhook')
+      .mockResolvedValue(true);
+    await service.recordPipelineFailure('org-a', 'p1', new Error('boom'));
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      'https://hooks.example/a',
+      expect.objectContaining({
+        projectId: 'p1',
+        kind: OpsAlertKind.pipeline_failed,
+      }),
+    );
   });
 
   it('acknowledges OAuth alerts only for the requested project', async () => {

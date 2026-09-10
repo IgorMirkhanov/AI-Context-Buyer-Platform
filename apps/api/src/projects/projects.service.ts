@@ -28,6 +28,7 @@ import {
   parseTokenEncryptionKey,
 } from '../security/token-encryption';
 import { signOAuthState, verifyOAuthState } from '../security/oauth-state';
+import { requireJwtSecret } from '../security/startup-secrets';
 import { ConnectionVerificationFailedError } from './connection-verification.error';
 
 @Injectable()
@@ -426,11 +427,7 @@ export class ProjectsService {
   }
 
   private stateSecret(): string {
-    return (
-      this.config.get<string>('JWT_SECRET') ??
-      this.config.get<string>('TOKEN_ENCRYPTION_KEY') ??
-      'change-me-in-production'
-    );
+    return requireJwtSecret((key) => this.config.get<string>(key));
   }
 
   private buildBriefPayload(

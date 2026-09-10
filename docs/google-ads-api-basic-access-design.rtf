@@ -1,0 +1,48 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\f0\fs22
+AI Context-Buyer Platform \emdash Google Ads API Design Overview\par
+\par
+1. Product name\par
+AI Context-Buyer Platform \emdash multi-tenant SaaS for contextologists and agencies managing Google Ads (and Yandex Direct) for multiple client projects.\par
+\par
+2. Audience\par
+B2B: advertising agencies and freelance performance marketers. Not a consumer app.\par
+\par
+3. Business model\par
+SaaS workspace per organization. Each client is an isolated project with its own OAuth credentials, briefs, semantics, creatives, campaigns, and reports (project_id isolation).\par
+\par
+4. What the tool does with Google Ads API\par
+- Connect a Google Ads account via OAuth 2.0 (scope: adwords).\par
+- Build campaign drafts from brief / semantic / creatives pipeline.\par
+- Create Search campaigns through the Google Ads API in PAUSED status.\par
+- Publish only after explicit user confirmation in the UI (no unattended publish).\par
+- Sync campaign list and pull performance reporting.\par
+- Suggest optimizations; apply changes only with user confirmation.\par
+- Keyword planning support via keyword ideas / related research steps.\par
+\par
+5. Architecture (high level)\par
+User (Web UI) -> AI Context-Buyer API -> Connector Layer -> Google Ads API.\par
+Business logic never calls Google SDK directly; only AdPlatformConnector.\par
+OAuth access/refresh tokens are encrypted at rest per project.\par
+\par
+6. Campaign types currently supported\par
+Search.\par
+\par
+7. Google Ads capabilities used\par
+Campaign Creation, Campaign Management, Reporting, Keyword Planning Services.\par
+\par
+8. Security and policy alignment\par
+- Per-project credential isolation.\par
+- Encrypted token storage.\par
+- No automatic campaign go-live without UI confirmation.\par
+- Operator audit logging without storing raw secrets in logs.\par
+\par
+9. Contact\par
+API / review contact: igor.mirkhanov@mail.ru\par
+Company URL: https://vhm-six.vercel.app\par
+Manager account (MCC): 268-538-8493\par
+\par
+10. Screens / demo\par
+Primary product UI is available at the company URL above. Local/staging demo can be provided to the review team on request.\par
+}

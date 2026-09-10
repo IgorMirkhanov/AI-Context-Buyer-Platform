@@ -7,6 +7,8 @@
 Сводка LLM по `project_id` без полного промпта в UI. Публикация — только из UI.
 Биллинг `organizations.plan` **не реализован** (открытый пробел).
 Чеклист живого клиента: `docs/10_RISKS_AND_OPEN_QUESTIONS.md`, раздел 7.
+Чеклист продакшен-деплоя: `docs/14_PRODUCTION_DEPLOY.md` (секреты, OAuth redirect,
+BullMQ, миграции, mocks, `/health`).
 
 ## Стек
 
@@ -24,7 +26,15 @@ cp .env.example .env
 
 На Windows PowerShell: `Copy-Item .env.example .env`
 
-Задайте `JWT_SECRET` своим значением (не коммитьте `.env`).
+Задайте `JWT_SECRET` (≥32 символов, не плейсхолдер) и
+`TOKEN_ENCRYPTION_KEY` (ровно 32 байта: 64 hex или base64). API **не
+стартует**, если секреты пустые, короткие или с дефолтом
+`change-me-in-production`. Не коммитьте `.env`.
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"  # JWT_SECRET
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # TOKEN_ENCRYPTION_KEY
+```
 
 Если на машине уже занят порт `5432` (локальный Postgres), в `.env` смените
 `POSTGRES_PORT` и порт в `DATABASE_URL` (например `5433`).
@@ -60,9 +70,13 @@ npm run dev:web
 
 ### Очередь фоновых задач (BullMQ)
 
-`PIPELINE_QUEUE=auto` (значение в `.env.example`): при заданном `REDIS_URL`
-вне тестов используется BullMQ. `NODE_ENV=test` всегда `inline`.
-Явный `inline` — работа без Redis.
+**Production:** `PIPELINE_QUEUE=bullmq` и рабочий `REDIS_URL`. Не используйте
+`auto` или `inline` на проде — `auto` без Redis тихо уйдёт в inline
+(один процесс, без переживания нескольких воркеров).
+
+Локально: `PIPELINE_QUEUE=auto` (значение в `.env.example`) — при заданном
+`REDIS_URL` вне тестов используется BullMQ. `NODE_ENV=test` всегда `inline`.
+Явный `inline` — работа без Redis (только dev/E2E).
 
 Через одну очередь (`pipeline` в Redis) идут:
 
@@ -127,7 +141,7 @@ npx prisma migrate dev --schema apps/api/prisma/schema.prisma
 «Подключить …». Для реального OAuth заполните `YANDEX_CLIENT_ID` /
 `YANDEX_CLIENT_SECRET` или `GOOGLE_ADS_CLIENT_ID` /
 `GOOGLE_ADS_CLIENT_SECRET` / `GOOGLE_ADS_DEVELOPER_TOKEN`, плюс
-`TOKEN_ENCRYPTION_KEY` (64 hex-символа) в `.env`.
+`TOKEN_ENCRYPTION_KEY` (64 hex-символа) в `.env`. API валидирует формат при старте.
 
 Для записи в кабинет (Этап 4) укажите `YANDEX_DIRECT_API_URL`. Песочница:
 `https://api-sandbox.direct.yandex.com/json/v5`. Локально без кабинета:
@@ -183,6 +197,8 @@ npm run test:e2e
 Если Postgres не на `5433`, задайте `DATABASE_URL` в окружении до запуска.
 
 ## Структура
+
+Прод-деплой (env, миграции, health, ограничения релиза): [`docs/14_PRODUCTION_DEPLOY.md`](docs/14_PRODUCTION_DEPLOY.md).
 
 ```
 /docs                      пакет проектной документации + промпты

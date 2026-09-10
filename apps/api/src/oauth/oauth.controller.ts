@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { ProjectsService } from '../projects/projects.service';
 import { verifyOAuthState } from '../security/oauth-state';
+import { requireJwtSecret } from '../security/startup-secrets';
 import { ConnectionVerificationFailedError } from '../projects/connection-verification.error';
 
 @Controller('oauth')
@@ -66,10 +67,6 @@ export class OauthController {
   }
 
   private stateSecret(): string {
-    return (
-      this.config.get<string>('JWT_SECRET') ??
-      this.config.get<string>('TOKEN_ENCRYPTION_KEY') ??
-      'change-me-in-production'
-    );
+    return requireJwtSecret((key) => this.config.get<string>(key));
   }
 }

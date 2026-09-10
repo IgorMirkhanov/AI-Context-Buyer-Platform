@@ -18,6 +18,7 @@ import { DEFAULT_CONNECTION_VERIFY_THROTTLE_MS } from '../connectors/platform-co
 
 const TEST_KEY =
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const TEST_JWT = 'test-jwt-secret-at-least-32-characters-long';
 
 describe('ProjectsService', () => {
   const prisma = {
@@ -79,7 +80,7 @@ describe('ProjectsService', () => {
           useValue: {
             get: (key: string) => {
               if (key === 'TOKEN_ENCRYPTION_KEY') return TEST_KEY;
-              if (key === 'JWT_SECRET') return 'jwt-test';
+              if (key === 'JWT_SECRET') return TEST_JWT;
               if (key === 'YANDEX_CLIENT_ID') return 'yandex-client';
               if (key === 'GOOGLE_ADS_CLIENT_ID') return 'google-client';
               return undefined;
@@ -268,7 +269,7 @@ describe('ProjectsService', () => {
 
     const state = signOAuthState(
       { projectId: 'p1', organizationId: 'org-a' },
-      'jwt-test',
+      TEST_JWT,
     );
     await service.completeOAuth(state, 'code-from-yandex');
 
@@ -313,7 +314,7 @@ describe('ProjectsService', () => {
 
     const state = signOAuthState(
       { projectId: 'p1', organizationId: 'org-a' },
-      'jwt-test',
+      TEST_JWT,
     );
     await expect(
       service.completeOAuth(state, 'code-from-yandex'),
@@ -344,7 +345,7 @@ describe('ProjectsService', () => {
 
     const state = signOAuthState(
       { projectId: 'p1', organizationId: 'org-a' },
-      'jwt-test',
+      TEST_JWT,
     );
     await service.completeOAuth(state, 'code-from-google');
 
@@ -370,7 +371,7 @@ describe('ProjectsService', () => {
           provide: ConfigService,
           useValue: {
             get: (key: string) => {
-              if (key === 'JWT_SECRET') return 'jwt-test';
+              if (key === 'JWT_SECRET') return TEST_JWT;
               if (key === 'YANDEX_DIRECT_MOCK') return '1';
               return undefined;
             },

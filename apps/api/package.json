@@ -32,17 +32,20 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.14.0",
     "ajv": "^8.17.1",
     "bcryptjs": "^3.0.2",
     "bullmq": "^6.3.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^4.6.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

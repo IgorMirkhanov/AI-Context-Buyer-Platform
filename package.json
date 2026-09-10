@@ -16,10 +16,14 @@
     "test:e2e": "npm run build -w @context-buyer/connectors && npm run build -w @context-buyer/agents && npm run build -w api && playwright test -c e2e/playwright.config.ts",
     "qa:semantic": "npm run build -w @context-buyer/connectors && npm run build -w @context-buyer/agents && npm run qa:semantic -w api --",
     "db:migrate": "npm run prisma:migrate -w api",
-    "db:generate": "npm run prisma:generate -w api"
+    "db:generate": "npm run prisma:generate -w api",
+    "smoke:prod": "node scripts/smoke-prod.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

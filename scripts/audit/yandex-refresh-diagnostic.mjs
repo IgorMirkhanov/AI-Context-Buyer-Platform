@@ -5,12 +5,16 @@
  * Usage:
  *   node scripts/audit/yandex-refresh-diagnostic.mjs [projectId]
  * Default project: mediapeace (98abacc8-...)
+ * Tokens in the response are redacted unless ALLOW_SHOW_TOKENS=1.
  */
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { createDecipheriv, scryptSync } from 'crypto';
+import { assertAuditScriptsAllowed } from './assert-local-only.mjs';
+
+assertAuditScriptsAllowed();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '../..');
@@ -105,7 +109,7 @@ try {
     json = { _parseError: true, rawText };
   }
 
-  const redact = process.argv.includes('--redact') || !process.argv.includes('--show-tokens');
+  const redact = process.env.ALLOW_SHOW_TOKENS !== '1';
   if (redact && json && typeof json === 'object' && !json._parseError) {
     if (json.access_token) json.access_token = `[redacted, len=${String(json.access_token).length}]`;
     if (json.refresh_token) json.refresh_token = `[redacted, len=${String(json.refresh_token).length}]`;

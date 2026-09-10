@@ -7,6 +7,9 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { createDecipheriv, scryptSync } from 'crypto';
+import { assertAuditScriptsAllowed } from './assert-local-only.mjs';
+
+assertAuditScriptsAllowed();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '../..');

@@ -1,5 +1,7 @@
 # Запуск из корня репозитория:
-# docker compose --env-file .env -f infra/docker-compose.yml up --build
+#   docker compose --env-file .env -f infra/docker-compose.yml up --build
+# Production: use .env.production (gitignored) + docs/14_PRODUCTION_DEPLOY.md
+# JWT_SECRET / TOKEN_ENCRYPTION_KEY have no insecure defaults.
 services:
   postgres:
     image: postgres:16-alpine
@@ -35,6 +37,8 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file:
+      - path: ../.env.production
+        required: false
       - path: ../.env
         required: false
     depends_on:
@@ -43,20 +47,41 @@ services:
       redis:
         condition: service_healthy
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       API_PORT: 3001
+      # Inside this compose network use service hostnames (not localhost).
       DATABASE_URL: postgresql://${POSTGRES_USER:-context}:${POSTGRES_PASSWORD:-context}@postgres:5432/${POSTGRES_DB:-context_buyer}?schema=public
       REDIS_URL: redis://redis:6379
-      PIPELINE_QUEUE: auto
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PIPELINE_QUEUE: ${PIPELINE_QUEUE:-bullmq}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in env file}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?set TOKEN_ENCRYPTION_KEY in env file}
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
-      YANDEX_REDIRECT_URI: ${YANDEX_REDIRECT_URI:-http://localhost:3001/oauth/yandex/callback}
+      YANDEX_REDIRECT_URI: ${YANDEX_REDIRECT_URI:-}
+      GOOGLE_ADS_CLIENT_ID: ${GOOGLE_ADS_CLIENT_ID:-}
+      GOOGLE_ADS_CLIENT_SECRET: ${GOOGLE_ADS_CLIENT_SECRET:-}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${GOOGLE_ADS_DEVELOPER_TOKEN:-}
+      GOOGLE_ADS_REDIRECT_URI: ${GOOGLE_ADS_REDIRECT_URI:-}
+      GOOGLE_ADS_MOCK: ${GOOGLE_ADS_MOCK:-0}
+      ATTRIBUTION_MOCK: ${ATTRIBUTION_MOCK:-}
+      MEDIA_MOCK: ${MEDIA_MOCK:-}
+      YANDEX_DIRECT_MOCK: ${YANDEX_DIRECT_MOCK:-}
     ports:
       - "${API_PORT:-3001}:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
 volumes:
   postgres_data:
