@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Context-Buyer Platform",
-  description: "Мультиагентная платформа для контекстной рекламы",
+  title: "Context Buyer",
+  description:
+    "Context Buyer (AI Context-Buyer Platform) — B2B tool for Yandex Direct and Google Ads workflows.",
 };
 
 export default function RootLayout({
