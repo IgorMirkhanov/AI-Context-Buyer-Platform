@@ -1,20 +1,23 @@
 import Link from "next/link";
 import { btnClass } from "@/ui/button";
 
+/** Public landing for OAuth brand verification (must match Google Auth app name). */
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-8">
       <p className="text-sm uppercase tracking-wide text-[var(--fg-muted)]">
-        Контекстная реклама · Яндекс Директ и Google Ads
+        Contextual advertising · Yandex Direct & Google Ads
       </p>
-      <h1 className="text-3xl font-semibold tracking-tight">
-        AI Context-Buyer Platform
-      </h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Context Buyer</h1>
+      <p className="text-lg text-[var(--fg-muted)]">AI Context-Buyer Platform</p>
       <p className="text-[var(--fg-muted)]">
-        Мультиагентная SaaS-платформа для полного цикла работы контекстолога.
-        Семантика, объявления и черновик кампании собираются по проекту.
-        Публикация — только после вашего подтверждения, кампания выходит на
-        паузе.
+        B2B workspace for agencies and contextologists. Build semantics, ads and
+        campaign drafts per client project. Publish to ad accounts only after
+        explicit confirmation in the UI; new campaigns start paused.
+      </p>
+      <p className="text-sm text-[var(--fg-muted)]">
+        Контекстная реклама для агентств: семантика, объявления и черновики
+        кампаний по проектам. Публикация — только после вашего подтверждения.
       </p>
       <div className="flex flex-wrap gap-3">
         <Link href="/register" className={btnClass("primary")}>
@@ -23,8 +26,11 @@ export default function Home() {
         <Link href="/login" className={btnClass("secondary")}>
           Войти
         </Link>
+        <Link href="/privacy" className={btnClass("ghost")}>
+          Privacy
+        </Link>
         <Link href="/terms" className={btnClass("ghost")}>
-          Условия
+          Terms
         </Link>
       </div>
     </main>

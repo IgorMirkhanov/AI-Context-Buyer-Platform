@@ -2,10 +2,11 @@ import path from "path";
 import type { NextConfig } from "next";
 
 const monorepoRoot = path.join(__dirname, "../..");
+const onVercel = Boolean(process.env.VERCEL);
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  // Trace files from the monorepo root (workspaces + hoisted deps).
+  // Standalone is for Docker/GHCR; Vercel uses its own Next builder.
+  ...(onVercel ? {} : { output: "standalone" as const }),
   outputFileTracingRoot: monorepoRoot,
   turbopack: {
     root: monorepoRoot,

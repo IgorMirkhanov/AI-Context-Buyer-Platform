@@ -1,53 +1,76 @@
 import Link from "next/link";
 import { Card } from "@/ui/card";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms of Use · Context Buyer",
+  description:
+    "Terms of use for Context Buyer (AI Context-Buyer Platform).",
+};
 
 export default function TermsPage() {
   return (
     <main className="mx-auto min-h-screen max-w-2xl p-8">
       <p className="mb-4 text-sm text-[var(--fg-muted)]">
         <Link href="/" className="underline">
-          На главную
+          Context Buyer — home
         </Link>
       </p>
       <Card>
-        <h1 className="mb-4 text-2xl font-semibold">Условия использования</h1>
+        <h1 className="mb-2 text-2xl font-semibold">Terms of Use</h1>
+        <p className="mb-6 text-sm text-[var(--fg-muted)]">
+          Context Buyer (AI Context-Buyer Platform) · Contact:
+          igor.mirkhanov@mail.ru
+        </p>
         <div className="flex flex-col gap-4 text-sm leading-6 text-[var(--fg)]">
           <p>
-            AI Context-Buyer Platform помогает собирать семантику, объявления и
-            черновики кампаний. Это инструмент для агентства и контекстолога, а
-            не самостоятельный рекламодатель.
+            <strong>Context Buyer</strong> helps agencies and contextologists
+            build semantics, ads and campaign drafts. It is a software tool, not
+            an independent advertiser spending your budget by itself.
           </p>
           <p>
-            <strong>Ответственность за рекламный бюджет</strong> несёт
-            организация, от имени которой запускаются кампании (агентство или
-            клиент). Платформа не возмещает перерасход, ошибочные ставки и
-            последствия решений, подтверждённых в кабинете.
+            <strong>Budget responsibility</strong> stays with the organization
+            that runs campaigns (agency or client). The platform does not
+            reimburse overspend, wrong bids or outcomes of actions confirmed in
+            the UI or ad cabinet.
           </p>
           <p>
-            <strong>Публикация только вручную.</strong> Кампании не создаются в
-            Яндекс Директе и Google Ads автоматически. Запись в кабинет
-            происходит только после явного подтверждения в интерфейсе. Новые
-            кампании создаются на паузе, без показов.
+            <strong>Manual publish only.</strong> Campaigns are not created in
+            Yandex Direct or Google Ads automatically. Writes to an ad account
+            happen only after explicit confirmation in the interface. New
+            campaigns are created paused (no delivery until you enable them).
           </p>
           <p>
-            <strong>Автопилот — отдельное согласие.</strong> Ежедневные правки
-            (пауза, бюджет, минус-слова) не включаются сами. Автопилот
-            ограничен этими действиями и не создаёт кампании.
+            <strong>Autopilot is opt-in.</strong> Daily adjustments (pause,
+            budget, negatives) never enable themselves. Autopilot is limited to
+            those actions and does not create campaigns.
           </p>
           <p>
-            Тексты, ключи и рекомендации агентов нужно проверять перед запуском.
-            Объяснения в интерфейсе (интент, источник фразы, кластер объявления)
-            помогают понять, почему система предложила вариант, но не заменяют
-            экспертизу контекстолога.
+            Review agent outputs before launch. In-product explanations help
+            understanding but do not replace professional judgment.
+          </p>
+          <p className="border-t border-[var(--border)] pt-4">
+            <strong>Условия (RU).</strong> Context Buyer — инструмент агентства,
+            не самостоятельный рекламодатель. Ответственность за бюджет — на
+            организации. Публикация только вручную, кампании на паузе.
+            Автопилот — отдельное согласие. Подробнее о данных:{" "}
+            <Link href="/privacy" className="underline">
+              Privacy Policy
+            </Link>
+            .
           </p>
         </div>
         <p className="mt-6 text-sm text-[var(--fg-muted)]">
+          <Link href="/privacy" className="underline">
+            Privacy
+          </Link>
+          {" · "}
           <Link href="/register" className="underline">
-            К регистрации
+            Register
           </Link>
           {" · "}
           <Link href="/login" className="underline">
-            Войти
+            Log in
           </Link>
         </p>
       </Card>
