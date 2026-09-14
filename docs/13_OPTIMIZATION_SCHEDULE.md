@@ -47,5 +47,18 @@
 ## Поля проекта (Prisma)
 
 - `optimization_launched_at` — первая публикация кампании
-- `optimization_last_run_at` — последний успешный автопрогон
+- `optimization_last_run_at` — последний **успешный** автопрогон (ручной `run` это поле не трогает)
 - `optimization_next_run_at` — когда сканер поставит следующий job
+
+## Нет снапшотов в текущем окне
+
+`runCore` требует performance snapshots в rolling-окне `optimizationComparePeriods().current`
+(последние 7 суток до вчера включительно). Если окно пустое:
+
+- **ручной** `POST .../optimization/run` → `400 Collect performance snapshots first`;
+- **плановый** `runScheduled` (launch / day-7+) → прогон **пропускается**: пишется только
+  новый `optimization_next_run_at`, **`optimization_last_run_at` не обновляется**
+  (успешным прогон не считается). Так день-0 после publish не «сгорает», если статистика
+  ещё не подтянулась.
+
+Снапшоты собираются отдельным шагом пайплайна / sync; без них агент не выдумывает метрики.

@@ -64,7 +64,7 @@ Searched `apps/api/src` + `scripts` for `console.log` / `Logger` near `accessTok
 
 **Closed** for runtime API. Scripts remain local-only.
 
-## 4. Rate limit `/auth/login`
+## 4. Rate limit `/auth/login` + global throttle tracker
 
 Automated Nest probe (`apps/api/src/auth/auth-login-throttle.spec.ts`): 10 rapid POSTs with same limits as production (`5 / 60s`).
 
@@ -73,6 +73,21 @@ Automated Nest probe (`apps/api/src/auth/auth-login-throttle.spec.ts`): 10 rapid
 - **Test passed**
 
 Live HTTP against `localhost:3001` was unavailable during the check (`@nestjs/platform-express` loader error after audit-side node_modules churn); unit probe covers the same Throttler config.
+
+### Global default (100 / 60s) — tracker by user, not shared office IP
+
+`ThrottlerModule.forRoot` default `100/min` applies to almost all routes (`GET /health` uses `@SkipThrottle`).
+Built-in `ThrottlerGuard` keys by **IP**, which false-positives 429 when several authenticated
+staff share one NAT/VPN IP.
+
+Production uses `UserThrottlerGuard` (`apps/api/src/auth/user-throttler.guard.ts`):
+
+| Request | Tracker key |
+|---|---|
+| Valid JWT (Bearer), even before route `JwtAuthGuard` sets `req.user` | `user:{sub}` |
+| No / invalid token (incl. `POST /auth/login`, `POST /auth/register`) | client **IP** (unchanged brute-force shield; route still `@Throttle` 5/min) |
+
+Probe: `apps/api/src/auth/user-throttler.guard.spec.ts` — user A exhausting a low limit does not 429 user B on the same IP; anonymous routes still share an IP bucket.
 
 ## 5. Scorecard
 

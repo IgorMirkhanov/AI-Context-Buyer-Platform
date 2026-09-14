@@ -2,11 +2,12 @@ import { join } from 'path';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { UserThrottlerGuard } from './auth/user-throttler.guard';
 import { ProjectsModule } from './projects/projects.module';
 import { CampaignPlanModule } from './campaign-plan/campaign-plan.module';
 import { AnalysisModule } from './analysis/analysis.module';
@@ -68,7 +69,7 @@ import { AiProviderModule } from './ai-provider/ai-provider.module';
     AppService,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: UserThrottlerGuard,
     },
   ],
 })

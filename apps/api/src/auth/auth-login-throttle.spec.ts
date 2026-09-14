@@ -6,9 +6,11 @@ import {
   Post,
 } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { Throttle, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { Throttle, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
+import { UserThrottlerGuard } from './user-throttler.guard';
 
 @Controller('auth')
 class AuthProbeController {
@@ -48,9 +50,13 @@ class OpenProbeController {
         limit: 100,
       },
     ]),
+    // Same dependency as AppModule → UserThrottlerGuard (login stays IP-keyed).
+    JwtModule.register({
+      secret: 'auth-login-throttle-probe-secret-32ch',
+    }),
   ],
   controllers: [AuthProbeController, OpenProbeController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: UserThrottlerGuard }],
 })
 class ThrottleProbeModule {}
 

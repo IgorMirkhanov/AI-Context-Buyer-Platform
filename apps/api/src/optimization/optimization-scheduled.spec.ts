@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import {
   isOptimizationDue,
   nextOptimizationAfterRun,
+  optimizationComparePeriods,
 } from '@context-buyer/agents';
 import { OptimizationService } from './optimization.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -84,12 +85,15 @@ describe('OptimizationService scheduled runs', () => {
     prisma.campaign.findMany.mockResolvedValue([
       { id: 'camp-1', externalCampaignId: '555', budget: 5000 },
     ]);
+    // Snapshots must fall inside the rolling current window from
+    // optimizationComparePeriods() — a fixed historical date ages out.
+    const { current } = optimizationComparePeriods();
     prisma.performanceSnapshot.findMany.mockResolvedValue([
       {
         campaignId: 'camp-1',
         adGroupExternalId: 'ag-1',
         adGroupName: 'Группа A',
-        date: new Date('2026-08-30T00:00:00.000Z'),
+        date: new Date(`${current.to}T00:00:00.000Z`),
         impressions: 1000,
         clicks: 50,
         spend: 500,
@@ -105,7 +109,14 @@ describe('OptimizationService scheduled runs', () => {
         OptimizationService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: jest.fn() } },
-        { provide: ConnectorRouter, useValue: { forPlatform: jest.fn() } },
+        {
+          provide: ConnectorRouter,
+          useValue: {
+            forPlatform: jest.fn().mockReturnValue({
+              getSearchTerms: jest.fn().mockResolvedValue([]),
+            }),
+          },
+        },
         { provide: AlertsService, useValue: {} },
         { provide: AuditService, useValue: {} },
         { provide: PipelineQueue, useValue: queue },
@@ -147,6 +158,24 @@ describe('OptimizationService scheduled runs', () => {
           optimizationNextRunAt: expectedNext,
         }),
       }),
+    );
+  });
+
+  it('skips scheduled run without current-window snapshots: bumps next only', async () => {
+    prisma.performanceSnapshot.findMany.mockResolvedValue([]);
+
+    const result = await service.runScheduled('org-1', 'proj-1', 'scheduled');
+    expect(result).toBeNull();
+
+    expect(prisma.project.update).toHaveBeenCalledTimes(1);
+    const updateData = prisma.project.update.mock.calls[0][0].data as Record<
+      string,
+      unknown
+    >;
+    expect(updateData.optimizationLastRunAt).toBeUndefined();
+    // First successful schedule slot is still launched_at + 7d (previousLastRunAt null).
+    expect(updateData.optimizationNextRunAt).toEqual(
+      nextOptimizationAfterRun(launchedAt, null, new Date()),
     );
   });
 
