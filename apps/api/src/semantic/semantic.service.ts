@@ -4,7 +4,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { AgentTaskStatus, AgentType, KeywordIntent, NegativeSuggestionStatus } from '@prisma/client';
+import {
+  AdPlatform,
+  AgentTaskStatus,
+  AgentType,
+  KeywordIntent,
+  NegativeSuggestionStatus,
+} from '@prisma/client';
 import {
   resolveLlmCostUsd,
   resolveSemanticLlm,
@@ -13,12 +19,17 @@ import {
   SemanticCore,
   SemanticCoreValidationError,
   isCommercialKeyword,
+  isSafeNegativePhrase,
+  sanitizeBriefNegatives,
 } from '@context-buyer/agents';
+import { PlatformApiError } from '@context-buyer/connectors';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
+import { PlatformConnectionService } from '../connectors/platform-connection.service';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { validateProjectBrief, BriefValidationError } from '../briefs/brief.validator';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { TokenRefreshService } from '../oauth/token-refresh.service';
 
 @Injectable()
 export class SemanticService {
@@ -27,7 +38,9 @@ export class SemanticService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connectors: ConnectorRouter,
+    private readonly platformConnection: PlatformConnectionService,
     private readonly ai: AiProviderService,
+    private readonly tokens: TokenRefreshService,
   ) {}
 
   async run(organizationId: string, projectId: string) {
@@ -67,17 +80,23 @@ export class SemanticService {
         briefRow.payloadJson as ProjectBriefPayload,
       );
       const connector = this.connectors.forPlatform(project.primaryPlatform);
+      const platformAuth = await this.resolvePlatformAuth(
+        organizationId,
+        projectId,
+        project.primaryPlatform,
+      );
       const { llm, mode } = resolveSemanticLlm({
         apiKey: credentials?.apiKey ?? null,
         provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
-      const { core, suggested_negative_words } = await runSemanticPipeline(brief, {
+      const { core, suggested_negative_words, sanitized_global_negatives } =
+        await runSemanticPipeline(brief, {
         llm,
         landingText: analysis.landingText,
         extraSeeds: analysis.customSeeds,
         getKeywordIdeas: (seeds, geo) =>
-          connector.getKeywordIdeas(seeds, geo),
+          connector.getKeywordIdeas(seeds, geo, platformAuth),
         onLlmCall: async (usage) => {
           await this.prisma.llmCallLog.create({
             data: {
@@ -96,6 +115,11 @@ export class SemanticService {
         },
       });
 
+      await this.persistSanitizedBriefNegatives(
+        projectId,
+        briefRow,
+        sanitized_global_negatives ?? brief.global_negative_keywords,
+      );
       await this.persistCore(projectId, core);
       await this.persistNegativeSuggestions(projectId, suggested_negative_words);
       await this.prisma.agentTask.update({
@@ -108,12 +132,7 @@ export class SemanticService {
       });
       return { taskId: task.id, status: AgentTaskStatus.done, core, llmMode: mode };
     } catch (err) {
-      const details =
-        err instanceof SemanticCoreValidationError
-          ? err.details.join('; ')
-          : err instanceof Error
-            ? err.message
-            : 'Unknown semantic agent error';
+      const details = this.formatSemanticError(err);
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -123,10 +142,56 @@ export class SemanticService {
         },
       });
       throw new BadRequestException({
-        message: 'Semantic pipeline failed',
+        message: details,
         details,
+        step: err instanceof PlatformApiError ? err.step : undefined,
       });
     }
+  }
+
+  private async resolvePlatformAuth(
+    organizationId: string,
+    projectId: string,
+    platform: AdPlatform,
+  ): Promise<
+    | { accessToken: string; clientLogin?: string; projectId: string }
+    | undefined
+  > {
+    const cred = await this.prisma.adPlatformCredential.findFirst({
+      where: { projectId, platform },
+    });
+    if (!cred) {
+      return undefined;
+    }
+    try {
+      await this.tokens.refreshProject(organizationId, projectId, {
+        force: false,
+      });
+    } catch (err) {
+      this.log.warn(
+        err instanceof Error
+          ? err.message
+          : 'token refresh before semantic failed',
+      );
+    }
+    const fresh =
+      (await this.prisma.adPlatformCredential.findFirst({
+        where: { projectId, platform },
+      })) ?? cred;
+    return this.platformConnection.buildAuth(fresh, projectId);
+  }
+
+  private formatSemanticError(err: unknown): string {
+    if (err instanceof SemanticCoreValidationError) {
+      return err.details.join('; ');
+    }
+    if (err instanceof PlatformApiError) {
+      return err.message;
+    }
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return 'Unknown semantic agent error';
   }
 
   async getResult(organizationId: string, projectId: string) {
@@ -150,6 +215,7 @@ export class SemanticService {
         id: item.id,
         phrase: item.phrase,
         reason: item.reason,
+        source: item.source,
         status: item.status,
         createdAt: item.createdAt,
         resolvedAt: item.resolvedAt,
@@ -216,12 +282,30 @@ export class SemanticService {
     }
 
     const payload = briefRow.payloadJson as ProjectBriefPayload;
+    const protectedPhrases = [
+      ...payload.marketing.usp,
+      payload.marketing.product_description ?? '',
+    ];
     const existing = new Set(
       payload.exclusions.global_negative_keywords.map((item) =>
         item.trim().toLowerCase(),
       ),
     );
     const phrase = suggestion.phrase.trim().toLowerCase();
+    if (!isSafeNegativePhrase(phrase, protectedPhrases)) {
+      await this.prisma.semanticNegativeSuggestion.update({
+        where: { id: suggestionId },
+        data: {
+          status: NegativeSuggestionStatus.rejected,
+          resolvedAt: new Date(),
+        },
+      });
+      return {
+        status: 'rejected',
+        phrase: suggestion.phrase,
+        reason: 'intersects_commercial_core',
+      };
+    }
 
     await this.prisma.$transaction(async (tx) => {
       if (!existing.has(phrase)) {
@@ -275,9 +359,6 @@ export class SemanticService {
       where: { projectId, status: NegativeSuggestionStatus.pending },
       orderBy: { createdAt: 'asc' },
     });
-    if (pending.length === 0) {
-      return { accepted: [] as string[] };
-    }
 
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, organizationId },
@@ -288,33 +369,66 @@ export class SemanticService {
       throw new BadRequestException('Бриф проекта не найден');
     }
 
+    if (pending.length === 0) {
+      const payload = briefRow.payloadJson as ProjectBriefPayload;
+      const cleaned = sanitizeBriefNegatives(
+        payload.exclusions.global_negative_keywords,
+        {
+          usp: payload.marketing.usp,
+          product_description: payload.marketing.product_description,
+          forbidden_phrases: payload.marketing.forbidden_phrases,
+        },
+      );
+      await this.persistSanitizedBriefNegatives(projectId, briefRow, cleaned);
+      return { accepted: [] as string[], rejected: 0 };
+    }
+
     const payload = briefRow.payloadJson as ProjectBriefPayload;
+    const protectedPhrases = [
+      ...payload.marketing.usp,
+      payload.marketing.product_description ?? '',
+    ];
     const existing = new Set(
       payload.exclusions.global_negative_keywords.map((item) =>
         item.trim().toLowerCase(),
       ),
     );
     const toAdd: string[] = [];
+    const toReject: string[] = [];
     for (const item of pending) {
       const phrase = item.phrase.trim();
       const key = phrase.toLowerCase();
       if (!key || existing.has(key)) {
         continue;
       }
+      if (!isSafeNegativePhrase(key, protectedPhrases)) {
+        toReject.push(item.id);
+        continue;
+      }
       existing.add(key);
       toAdd.push(phrase);
     }
 
+    const cleanedExisting = sanitizeBriefNegatives(
+      payload.exclusions.global_negative_keywords,
+      {
+        usp: payload.marketing.usp,
+        product_description: payload.marketing.product_description,
+        forbidden_phrases: payload.marketing.forbidden_phrases,
+      },
+    );
+    const briefNeedsRewrite =
+      cleanedExisting.length !==
+        payload.exclusions.global_negative_keywords.length ||
+      toAdd.length > 0;
+
     await this.prisma.$transaction(async (tx) => {
-      if (toAdd.length > 0) {
+      if (briefNeedsRewrite) {
         const nextPayload: ProjectBriefPayload = {
           ...payload,
           exclusions: {
             ...payload.exclusions,
-            global_negative_keywords: [
-              ...payload.exclusions.global_negative_keywords,
-              ...toAdd,
-            ],
+            global_negative_keywords: [...cleanedExisting, ...toAdd],
           },
         };
         try {
@@ -336,19 +450,33 @@ export class SemanticService {
           },
         });
       }
-      await tx.semanticNegativeSuggestion.updateMany({
-        where: {
-          projectId,
-          status: NegativeSuggestionStatus.pending,
-        },
-        data: {
-          status: NegativeSuggestionStatus.accepted,
-          resolvedAt: new Date(),
-        },
-      });
+      if (toReject.length > 0) {
+        await tx.semanticNegativeSuggestion.updateMany({
+          where: { id: { in: toReject } },
+          data: {
+            status: NegativeSuggestionStatus.rejected,
+            resolvedAt: new Date(),
+          },
+        });
+      }
+      const acceptIds = pending
+        .filter((item) => !toReject.includes(item.id))
+        .map((item) => item.id);
+      if (acceptIds.length > 0) {
+        await tx.semanticNegativeSuggestion.updateMany({
+          where: { id: { in: acceptIds } },
+          data: {
+            status: NegativeSuggestionStatus.accepted,
+            resolvedAt: new Date(),
+          },
+        });
+      }
     });
 
-    return { accepted: pending.map((item) => item.phrase) };
+    return {
+      accepted: toAdd,
+      rejected: toReject.length,
+    };
   }
 
   async exportCsv(
@@ -430,6 +558,49 @@ export class SemanticService {
     return Buffer.from(xml, 'utf8');
   }
 
+  private async persistSanitizedBriefNegatives(
+    projectId: string,
+    briefRow: { id: string; version: number; payloadJson: unknown },
+    sanitized: string[],
+  ) {
+    const payload = briefRow.payloadJson as ProjectBriefPayload;
+    const current = payload.exclusions.global_negative_keywords.map((item) =>
+      item.trim().toLowerCase(),
+    );
+    const next = sanitized.map((item) => item.trim().toLowerCase());
+    const same =
+      current.length === next.length &&
+      current.every((item, index) => item === next[index]);
+    if (same) {
+      return;
+    }
+    const nextPayload: ProjectBriefPayload = {
+      ...payload,
+      exclusions: {
+        ...payload.exclusions,
+        global_negative_keywords: sanitized,
+      },
+    };
+    try {
+      validateProjectBrief(nextPayload);
+    } catch (err) {
+      if (err instanceof BriefValidationError) {
+        this.log.warn(
+          `skip brief negative sanitize: ${err.details.join('; ')}`,
+        );
+        return;
+      }
+      throw err;
+    }
+    await this.prisma.projectBrief.create({
+      data: {
+        projectId,
+        version: briefRow.version + 1,
+        payloadJson: nextPayload,
+      },
+    });
+  }
+
   private async persistCore(projectId: string, core: SemanticCore) {
     await this.prisma.$transaction(async (tx) => {
       await tx.validationIssue.deleteMany({ where: { projectId } });
@@ -490,7 +661,7 @@ export class SemanticService {
 
   private async persistNegativeSuggestions(
     projectId: string,
-    suggestions: Array<{ phrase: string; reason: string }>,
+    suggestions: Array<{ phrase: string; reason: string; source?: string }>,
   ) {
     await this.prisma.$transaction(async (tx) => {
       await tx.semanticNegativeSuggestion.deleteMany({
@@ -519,6 +690,7 @@ export class SemanticService {
         if (!phrase || skip.has(phrase)) {
           continue;
         }
+        const source = item.source?.trim() || 'llm_negative_words';
         await tx.semanticNegativeSuggestion.upsert({
           where: {
             projectId_phrase: { projectId, phrase },
@@ -527,9 +699,11 @@ export class SemanticService {
             projectId,
             phrase,
             reason: item.reason,
+            source,
           },
           update: {
             reason: item.reason,
+            source,
             status: NegativeSuggestionStatus.pending,
             resolvedAt: null,
           },

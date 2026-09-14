@@ -495,7 +495,15 @@ export class CampaignsService {
               connector.addNegativeKeywords(
                 projectId,
                 { type: 'ad_group', id: state.externalId },
-                group.negative_keywords,
+                group.negative_keywords.filter((phrase) => {
+                  const key = phrase.trim().toLowerCase();
+                  return (
+                    key.length > 0 &&
+                    !group.keywords.some(
+                      (kw) => kw.trim().toLowerCase() === key,
+                    )
+                  );
+                }),
                 auth,
               ),
           );

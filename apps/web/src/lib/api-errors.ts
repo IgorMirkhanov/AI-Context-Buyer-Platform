@@ -25,6 +25,37 @@ export function localizeApiError(message: string): string {
     return "Сначала обновите статистику на вкладке «Аналитика» — нужны снимки из рекламного кабинета.";
   }
 
+  if (
+    /data\/clusters must NOT have fewer than 1 items/i.test(message) ||
+    /Семантика пустая/i.test(message)
+  ) {
+    return (
+      "Семантика пустая: Google Keyword Planner не вернул фразы (или всё срезали минус-слова). " +
+      "Сохраните бриф без минусов по ядру ниши, нажмите «Обновить токен», " +
+      "затем снова «Прогнать пайплайн». Для локальной проверки — GOOGLE_ADS_MOCK=1."
+    );
+  }
+
+  if (/Copywriting pipeline failed/i.test(message)) {
+    return (
+      "Объявления не сохранились (часто из‑за большого числа кластеров). " +
+      "Обновите страницу и снова нажмите «Прогнать пайплайн до черновика»."
+    );
+  }
+
+  if (/Request contains an invalid argument/i.test(message)) {
+    if (/IMMUTABLE_FIELD|operations\.create\.negative/i.test(message)) {
+      return (
+        "Google Ads отклонил минус-слова: часть фраз уже добавлена как плюс-ключи " +
+        "(поле negative нельзя менять). Пересечение убрано в API — повторите публикацию."
+      );
+    }
+    return (
+      "Google Ads отклонил создание кампании (неверный аргумент). " +
+      "Обновите API и повторите публикацию; если снова ошибка — проверьте бюджет/валюту кабинета."
+    );
+  }
+
   return message;
 }
 

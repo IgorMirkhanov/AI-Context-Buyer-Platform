@@ -19,6 +19,7 @@ export {
   suggestNearIntentStep,
   suggestFromSeedWordsStep,
   suggestNegativeWordsStep,
+  buildSuggestedNegativeWords,
   clusterStep,
   finalizeStep,
 } from "./semantic/pipeline";
@@ -46,7 +47,8 @@ export {
   cosine,
 } from "./semantic/embeddings";
 export type { EmbeddingsClient, VectorIndex } from "./semantic/embeddings";
-export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword, isCommercialKeyword, combinedGeoCommercialMasks, geoLabelFromBriefCode, collapseConsecutiveDuplicateTokens, cleanServiceMask, servicePhrasesFromLanding, COMMERCIAL_TRIGGERS } from "./semantic/heuristics";
+export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword, isCommercialKeyword, combinedGeoCommercialMasks, geoLabelFromBriefCode, collapseConsecutiveDuplicateTokens, dropDuplicateBoundaryTrigger, cleanServiceMask, servicePhrasesFromLanding, COMMERCIAL_TRIGGERS, noncommercialPlannerNegativeCandidates, filterNegativesAgainstCommercialCore, mergeSuggestedNegativeWords, normalizeNegativeSource, tokenize, serviceTypeFromPhrase, productFamilyFromPhrase, clusteringPartitionKey, shouldCrossMinusPhrase, dominantClusterPartition, isPhraseOnNiche, nicheCoreTokens, isSafeNegativePhrase, sanitizeBriefNegatives } from "./semantic/heuristics";
+export type { ClusteringServiceType } from "./semantic/heuristics";
 export {
   compareSemanticQa,
   compareCommercialGoldRecall,
@@ -72,6 +74,7 @@ export type {
   SemanticCore,
   SemanticKeyword,
   SemanticPipelineResult,
+  SuggestedNegativeSource,
   SuggestedNegativeWord,
 } from "./semantic/types";
 
@@ -210,7 +213,7 @@ export type {
   Spend7dSummary,
 } from "./reporting/types";
 
-export { evaluateOpsAlerts, OAUTH_EXPIRING_WITHIN_MS } from "./ops/alerts";
+export { evaluateOpsAlerts, OAUTH_EXPIRING_WITHIN_MS, OAUTH_ACCESS_TOKEN_ALERT_FLOOR_MS } from "./ops/alerts";
 export type { OpsAlertDraft, OpsAlertInput, OpsAlertKind } from "./ops/alerts";
 
 export {

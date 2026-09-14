@@ -354,8 +354,57 @@ describe('suggestNegativeWordsStep', () => {
       llm,
     );
     expect(result).toEqual([
-      { phrase: 'самолечение', reason: 'DIY' },
-      { phrase: 'видео', reason: 'развлекательный интент' },
+      {
+        phrase: 'самолечение',
+        reason: 'DIY',
+        source: 'llm_negative_words',
+      },
+      {
+        phrase: 'видео',
+        reason: 'развлекательный интент',
+        source: 'llm_negative_words',
+      },
+    ]);
+  });
+
+  it('maps llm_niche_antonym source from LLM response', async () => {
+    const llm: SemanticLlm = {
+      extractMasks: jest.fn(),
+      classifyIntents: jest.fn(),
+      nameCluster: jest.fn(),
+      suggestNearIntentPhrases: jest.fn(),
+      suggestFromSeedWords: jest.fn(),
+      suggestNegativeWords: jest.fn().mockResolvedValue({
+        negatives: [
+          {
+            phrase: 'мастер класс',
+            reason: 'DIY для премиум ремонта',
+            source: 'llm_niche_antonym',
+          },
+        ],
+        usage: {
+          step: 'suggest_negative_words',
+          model: 'mock',
+          prompt: '',
+          response: '',
+          inputTokens: 1,
+          outputTokens: 1,
+          costUsd: 0,
+          latencyMs: 1,
+        },
+      }),
+    };
+    const result = await suggestNegativeWordsStep(
+      brief,
+      [{ phrase: 'ремонт квартир цена', intent: 'hot', frequency: 10, source: 'mock' }],
+      llm,
+    );
+    expect(result).toEqual([
+      {
+        phrase: 'мастер класс',
+        reason: 'DIY для премиум ремонта',
+        source: 'llm_niche_antonym',
+      },
     ]);
   });
 

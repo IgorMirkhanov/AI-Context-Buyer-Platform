@@ -15,9 +15,25 @@ export default function Home() {
         campaign drafts per client project. Publish to ad accounts only after
         explicit confirmation in the UI; new campaigns start paused.
       </p>
+      <p className="text-[var(--fg-muted)]">
+        When you connect Google Ads, Context Buyer requests OAuth access to your
+        Google Ads account so we can sync campaigns, pull reporting and create
+        paused drafts on your behalf. We do not publish live ads without your
+        confirmation. Details:{" "}
+        <Link href="/privacy" className="underline">
+          Privacy Policy
+        </Link>
+        .
+      </p>
       <p className="text-sm text-[var(--fg-muted)]">
         Контекстная реклама для агентств: семантика, объявления и черновики
         кампаний по проектам. Публикация — только после вашего подтверждения.
+        Подключение Google Ads — через OAuth для синхронизации кабинета и
+        отчётов; см.{" "}
+        <Link href="/privacy" className="underline">
+          Privacy
+        </Link>
+        .
       </p>
       <div className="flex flex-wrap gap-3">
         <Link href="/register" className={btnClass("primary")}>

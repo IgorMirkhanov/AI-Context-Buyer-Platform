@@ -1,7 +1,84 @@
-import { KeywordIdea, KeywordIntent, SemanticBriefInput } from "./types";
+import {
+  KeywordIdea,
+  KeywordIntent,
+  SemanticBriefInput,
+  SuggestedNegativeSource,
+  SuggestedNegativeWord,
+} from "./types";
 
 /** Сервисные токены — не коммерческое ядро даже если Wordstat их подсунул. */
 const SERVICE_NEGATIVE_TOKENS = ["ремонт"];
+
+/** Стоп-слова для минус-токенов из Planner (не несут минус-смысла сами по себе). */
+const NEGATIVE_TOKEN_STOPWORDS = new Set([
+  "для",
+  "или",
+  "при",
+  "как",
+  "это",
+  "все",
+  "без",
+  "под",
+  "над",
+  "про",
+  "чем",
+  "что",
+  "где",
+  "кто",
+  "ваш",
+  "моя",
+  "мой",
+  "наши",
+  "алматы",
+  "москва",
+  "казахстан",
+  "россия",
+]);
+
+/** Продуктовые/сервисные токены — нельзя предлагать как «мусорные» минусы. */
+const PRODUCT_OR_SERVICE_NEGATIVE_BLOCK = new Set([
+  "кондиционер",
+  "кондиционеры",
+  "кондиционера",
+  "кондиционеров",
+  "кондиционерами",
+  "кондер",
+  "кондеры",
+  "сплит",
+  "система",
+  "системы",
+  "систем",
+  "установка",
+  "установки",
+  "установку",
+  "установщики",
+  "монтаж",
+  "монтажа",
+  "монтажом",
+  "купить",
+  "куплю",
+  "продам",
+  "продажа",
+  "заказать",
+  "цена",
+  "цены",
+  "стоимость",
+  "доставка",
+  "наличие",
+  "ремонт",
+  "починка",
+  "сервис",
+  "заправка",
+  "мойка",
+  "чистка",
+]);
+
+const HVAC_FAMILIES = new Set([
+  "family:conditioner",
+  "family:conder",
+  "family:split_system",
+  "family:vrf",
+]);
 
 const HOT_MARKERS = [
   "купить",
@@ -102,6 +179,231 @@ const CLUSTERING_TAILS = [
   "стоимость",
   "заказать",
 ];
+
+const INSTALL_MARKERS = [
+  "установка",
+  "установки",
+  "установку",
+  "установить",
+  "монтаж",
+  "монтажа",
+  "монтажу",
+  "монтажом",
+  "смонтировать",
+] as const;
+
+const REPAIR_MARKERS = ["ремонт", "ремонта", "починить", "починка"] as const;
+const REFILL_MARKERS = [
+  "заправка",
+  "заправки",
+  "дозаправка",
+  "фреон",
+] as const;
+const CLEAN_MARKERS = ["мойка", "мойки", "чистка", "чистки", "почистить"] as const;
+
+export type ClusteringServiceType =
+  | "purchase"
+  | "install"
+  | "repair"
+  | "refill"
+  | "clean"
+  | "product";
+
+/** Тип услуги в запросе — жёсткая перегородка кластеров. */
+export function serviceTypeFromPhrase(phrase: string): ClusteringServiceType {
+  const p = normalizeMask(phrase);
+  if (INSTALL_MARKERS.some((marker) => p.includes(marker))) {
+    return "install";
+  }
+  if (REFILL_MARKERS.some((marker) => p.includes(marker))) {
+    return "refill";
+  }
+  if (CLEAN_MARKERS.some((marker) => p.includes(marker))) {
+    return "clean";
+  }
+  if (REPAIR_MARKERS.some((marker) => p.includes(marker))) {
+    return "repair";
+  }
+  if (
+    HOT_MARKERS.some((marker) => p.includes(marker)) ||
+    COMMERCIAL_TRIGGERS.some((marker) => p.includes(marker))
+  ) {
+    return "purchase";
+  }
+  return "product";
+}
+
+/**
+ * Продуктовое семейство фразы: сплит / кондер / кондиционер / SKU / ядро бренда.
+ * Кластер одной семьи не смешивается с другой.
+ */
+export function productFamilyFromPhrase(phrase: string): string {
+  const normalized = normalizeMask(phrase);
+  if (/сплит[-\s]?систем/u.test(normalized)) {
+    return "family:split_system";
+  }
+  // «кондер» / «кондеры», но не «кондиционер…»
+  if (/(^|[^\p{L}])кондер(?!ицион)\p{L}*/u.test(normalized)) {
+    return "family:conder";
+  }
+  if (/кондиционер/u.test(normalized)) {
+    return "family:conditioner";
+  }
+  if (/(^|\s)vrf(\s|$)/u.test(normalized)) {
+    return "family:vrf";
+  }
+
+  const core = phraseClusteringCore(phrase);
+  const tokens = tokenize(core).filter(
+    (token) =>
+      !NEGATIVE_TOKEN_STOPWORDS.has(token) &&
+      !INSTALL_MARKERS.includes(token as (typeof INSTALL_MARKERS)[number]) &&
+      !REPAIR_MARKERS.includes(token as (typeof REPAIR_MARKERS)[number]) &&
+      !HOT_MARKERS.includes(token) &&
+      !COMMERCIAL_TRIGGERS.includes(
+        token as (typeof COMMERCIAL_TRIGGERS)[number],
+      ),
+  );
+  const sku = tokens.find((token) => /\d/.test(token) && token.length >= 4);
+  if (sku) {
+    return `sku:${sku}`;
+  }
+  if (tokens.length === 0) {
+    return "family:other";
+  }
+  const top = [...tokens].sort((a, b) => b.length - a.length).slice(0, 2);
+  return `core:${top.join("+")}`;
+}
+
+/** Ключ жёсткой перегородки до cosine-кластеризации. */
+export function clusteringPartitionKey(phrase: string): string {
+  let service = serviceTypeFromPhrase(phrase);
+  // Голый продукт («сплит система») держим с покупкой, не с монтажом.
+  if (service === "product") {
+    service = "purchase";
+  }
+  return `${service}|${productFamilyFromPhrase(phrase)}`;
+}
+
+/** Токены ниши из УТП / описания — для отсечения чужих тематик. */
+export function nicheCoreTokens(brief: SemanticBriefInput): Set<string> {
+  const blob = [...brief.usp, brief.product_description ?? ""]
+    .join(" ")
+    .toLowerCase();
+  const tokens = new Set(
+    tokenize(blob).filter(
+      (token) =>
+        token.length > 2 &&
+        !NEGATIVE_TOKEN_STOPWORDS.has(token) &&
+        !HOT_MARKERS.includes(token),
+    ),
+  );
+  const hvac =
+    [...tokens].some((token) =>
+      /кондиц|кондер|сплит|vrf|монтаж|установ/u.test(token),
+    ) || /кондиц|кондер|сплит|vrf/u.test(blob);
+  if (hvac) {
+    for (const token of [
+      "кондиционер",
+      "кондиционера",
+      "кондиционеров",
+      "кондиционеры",
+      "кондер",
+      "кондеры",
+      "сплит",
+      "система",
+      "системы",
+      "vrf",
+      "samsung",
+      "lg",
+      "gree",
+      "midea",
+      "мидеа",
+      "electrolux",
+    ]) {
+      tokens.add(token);
+    }
+  }
+  return tokens;
+}
+
+/** Фраза по ниши брифа (отсев «гинекология москва», «шторы» и т.п.). */
+export function isPhraseOnNiche(
+  phrase: string,
+  brief: SemanticBriefInput,
+): boolean {
+  const niche = nicheCoreTokens(brief);
+  if (niche.size === 0) {
+    return true;
+  }
+  const tokens = tokenize(phrase);
+  if (tokens.some((token) => niche.has(token))) {
+    return true;
+  }
+  const family = productFamilyFromPhrase(phrase);
+  const briefFamilies = new Set(
+    [...brief.usp, brief.product_description ?? ""].map((item) =>
+      productFamilyFromPhrase(item),
+    ),
+  );
+  const nicheIsHvac = [...briefFamilies].some((item) => HVAC_FAMILIES.has(item))
+    || [...niche].some((token) => /кондиц|кондер|сплит|vrf/u.test(token));
+  if (nicheIsHvac && HVAC_FAMILIES.has(family)) {
+    return true;
+  }
+  if (family.startsWith("sku:") && tokens.some((token) => niche.has(token))) {
+    return true;
+  }
+  // Артикул рядом с нишевым брендом уже покрыт; голый SKU без бренда — нет.
+  return false;
+}
+
+/**
+ * Минус безопасен, только если не пересекается с коммерческим/продуктовым ядром.
+ */
+export function isSafeNegativePhrase(
+  phrase: string,
+  protectedPhrases: string[],
+): boolean {
+  return (
+    filterNegativesAgainstCommercialCore(
+      [
+        {
+          phrase,
+          reason: "check",
+          source: "llm_negative_words",
+        },
+      ],
+      protectedPhrases,
+    ).length > 0
+  );
+}
+
+/** Вычистить из брифа минусы, которые режут ядро ниши. */
+export function sanitizeBriefNegatives(
+  negatives: string[],
+  brief: Pick<
+    SemanticBriefInput,
+    "usp" | "product_description" | "forbidden_phrases"
+  >,
+): string[] {
+  const protectedPhrases = [
+    ...brief.usp,
+    brief.product_description ?? "",
+    ...(brief.forbidden_phrases ?? []),
+  ].filter(Boolean);
+  // Защищаем и типовые коммерческие/товарные токены ниши.
+  const extra = [...nicheCoreTokens({
+    geo: [],
+    usp: brief.usp,
+    target_audience: [],
+    global_negative_keywords: [],
+    product_description: brief.product_description,
+  })];
+  return negatives.filter((item) =>
+    isSafeNegativePhrase(item, [...protectedPhrases, ...extra]),
+  );
+}
 
 /** УТП без маркетингового префикса → маска для Wordstat. */
 export function cleanServiceMask(usp: string): string {
@@ -205,6 +507,27 @@ export function collapseConsecutiveDuplicateTokens(phrase: string): string {
   return collapsed.join(" ");
 }
 
+/**
+ * Если фраза начинается и заканчивается одним и тем же коммерческим триггером
+ * (не обязательно подряд) — оставляем только в начале.
+ * Пример: «заказать выезд … заказать» → «заказать выезд …».
+ */
+export function dropDuplicateBoundaryTrigger(phrase: string): string {
+  const tokens = normalizeMask(phrase).split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) {
+    return tokens.join(" ");
+  }
+  const first = tokens[0];
+  const last = tokens[tokens.length - 1];
+  if (
+    first === last &&
+    (COMMERCIAL_TRIGGERS as readonly string[]).includes(first)
+  ) {
+    return tokens.slice(0, -1).join(" ");
+  }
+  return tokens.join(" ");
+}
+
 /** Производные маски из УТП: сингуляр, хвост «ноутбук asus», бренд, линейка ROG. */
 export function deriveMasksFromUsp(usp: string): string[] {
   const base = normalizeMask(usp);
@@ -271,9 +594,16 @@ export function combinedGeoCommercialMasks(
   ];
   const masks: string[] = [];
   for (const service of services) {
+    const serviceTokens = service.split(/\s+/).filter(Boolean);
+    const longUninflected = serviceTokens.length > 4;
     for (const city of cities) {
-      for (const suffix of GEO_PRICE_SUFFIXES) {
-        masks.push(`${service} ${city} ${suffix}`);
+      if (longUninflected) {
+        // Длинные УТП без падежного согласования: не клеим «… москва цена».
+        masks.push(`стоимость ${service} в ${city}`);
+      } else {
+        for (const suffix of GEO_PRICE_SUFFIXES) {
+          masks.push(`${service} ${city} ${suffix}`);
+        }
       }
       if (looksBuyableProduct(service)) {
         masks.push(`купить ${service} ${city}`);
@@ -390,11 +720,17 @@ export function filterKeywordIdeas(
   const seen = new Set<string>();
   const filtered: KeywordIdea[] = [];
   for (const idea of ideas) {
-    const phrase = collapseConsecutiveDuplicateTokens(idea.phrase);
+    const phrase = dropDuplicateBoundaryTrigger(
+      collapseConsecutiveDuplicateTokens(idea.phrase),
+    );
     if (!phrase || seen.has(phrase)) {
       continue;
     }
     if (phraseMatchesNegatives(phrase, blocked)) {
+      continue;
+    }
+    // Align with finalizeStep (freq>0). Competition may be absent on limited API access.
+    if (!(idea.frequency > 0)) {
       continue;
     }
     seen.add(phrase);
@@ -419,4 +755,205 @@ export function tokenize(phrase: string): string[] {
     .toLowerCase()
     .split(/[\s\-_/]+/)
     .filter((token) => token.length > 2);
+}
+
+const PLANNER_IDEA_SOURCES = new Set([
+  "google_keyword_planner",
+  "mock_wordstat",
+]);
+
+/**
+ * Минус-кандидаты из Planner/Wordstat: ненулевая частотность, не коммерция.
+ * Сначала целые ненужные фразы, затем токены (без продуктового/сервисного ядра).
+ */
+export function noncommercialPlannerNegativeCandidates(
+  ideas: KeywordIdea[],
+  options?: { alreadyBlocked?: string[] },
+): SuggestedNegativeWord[] {
+  const planner = ideas.filter(
+    (idea) => PLANNER_IDEA_SOURCES.has(idea.source) && idea.frequency > 0,
+  );
+  const commercial = planner.filter((idea) =>
+    isCommercialKeyword(idea.phrase),
+  );
+  const noncommercial = planner.filter(
+    (idea) => !isCommercialKeyword(idea.phrase),
+  );
+  const commercialTokens = new Set(
+    commercial.flatMap((idea) => tokenize(idea.phrase)),
+  );
+  const blocked = new Set(
+    (options?.alreadyBlocked ?? [])
+      .map((item) => item.trim().toLowerCase().replace(/\s+/g, " "))
+      .filter(Boolean),
+  );
+  const seen = new Set<string>();
+  const result: SuggestedNegativeWord[] = [];
+
+  const pushCandidate = (phrase: string, reason: string) => {
+    const normalized = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!normalized || normalized.length < 2) return;
+    if (/\d/.test(normalized)) return;
+    if (blocked.has(normalized) || seen.has(normalized)) return;
+    if (PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(normalized)) return;
+    const tokens = tokenize(normalized);
+    if (tokens.some((token) => commercialTokens.has(token))) return;
+    if (tokens.some((token) => PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(token))) {
+      return;
+    }
+    seen.add(normalized);
+    result.push({
+      phrase: normalized,
+      reason,
+      source: "keyword_planner_noncommercial",
+    });
+  };
+
+  for (const idea of noncommercial) {
+    const phrase = normalizeMask(idea.phrase);
+    const tokens = tokenize(phrase);
+    // Многословный мусор целиком («своими руками», «мастер класс»).
+    if (tokens.length >= 2) {
+      pushCandidate(
+        phrase,
+        `некоммерческий запрос «${idea.phrase}» (частотность ${idea.frequency})`,
+      );
+    }
+    for (const token of tokens) {
+      if (NEGATIVE_TOKEN_STOPWORDS.has(token)) continue;
+      if (/\d/.test(token)) continue;
+      if (commercialTokens.has(token) || blocked.has(token) || seen.has(token)) {
+        continue;
+      }
+      pushCandidate(
+        token,
+        `некоммерческий запрос «${idea.phrase}» (частотность ${idea.frequency})`,
+      );
+    }
+  }
+  return result;
+}
+
+/** Другой кластер/фраза → минус, если другое продуктовое семейство или другая услуга. */
+export function shouldCrossMinusPhrase(
+  targetService: ClusteringServiceType,
+  targetFamily: string,
+  otherPhrase: string,
+): boolean {
+  const otherService = serviceTypeFromPhrase(otherPhrase);
+  const otherFamily = productFamilyFromPhrase(otherPhrase);
+  if (targetFamily !== otherFamily) {
+    if (
+      targetFamily === "family:other" &&
+      otherFamily === "family:other"
+    ) {
+      return false;
+    }
+    return true;
+  }
+  if (
+    targetService !== otherService &&
+    targetService !== "product" &&
+    otherService !== "product"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function dominantClusterPartition(
+  phrases: string[],
+): { service: ClusteringServiceType; family: string } {
+  const services = new Map<ClusteringServiceType, number>();
+  const families = new Map<string, number>();
+  for (const phrase of phrases) {
+    const service = serviceTypeFromPhrase(phrase);
+    const family = productFamilyFromPhrase(phrase);
+    services.set(service, (services.get(service) ?? 0) + 1);
+    families.set(family, (families.get(family) ?? 0) + 1);
+  }
+  const service =
+    [...services.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "product";
+  const family =
+    [...families.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ??
+    "family:other";
+  return { service, family };
+}
+
+/** Убрать предложения, пересекающиеся с коммерческим ядром (фраза или любой токен). */
+export function filterNegativesAgainstCommercialCore(
+  suggestions: SuggestedNegativeWord[],
+  commercialPhrases: string[],
+): SuggestedNegativeWord[] {
+  const corePhrases = new Set(
+    commercialPhrases
+      .map((item) => item.trim().toLowerCase().replace(/\s+/g, " "))
+      .filter(Boolean),
+  );
+  const coreTokens = new Set(
+    commercialPhrases.flatMap((phrase) => tokenize(phrase)),
+  );
+  return suggestions.filter((item) => {
+    const phrase = item.phrase.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!phrase || corePhrases.has(phrase)) {
+      return false;
+    }
+    if (/\d/.test(phrase)) {
+      return false;
+    }
+    if (PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(phrase)) {
+      return false;
+    }
+    const tokens = tokenize(phrase);
+    if (tokens.length === 0) {
+      return phrase.length >= 2 && !coreTokens.has(phrase);
+    }
+    // Любой токен из ядра (УТП / коммерция) — нельзя в минусы.
+    if (tokens.some((token) => coreTokens.has(token))) {
+      return false;
+    }
+    if (tokens.some((token) => PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(token))) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function mergeSuggestedNegativeWords(
+  ...lists: SuggestedNegativeWord[][]
+): SuggestedNegativeWord[] {
+  const seen = new Set<string>();
+  const merged: SuggestedNegativeWord[] = [];
+  for (const list of lists) {
+    for (const item of list) {
+      const phrase = item.phrase.trim().toLowerCase().replace(/\s+/g, " ");
+      if (!phrase || phrase.length < 2 || seen.has(phrase)) {
+        continue;
+      }
+      seen.add(phrase);
+      merged.push({
+        phrase,
+        reason: item.reason.trim() || "нецелевой интент",
+        source: item.source,
+      });
+    }
+  }
+  return merged;
+}
+
+export function normalizeNegativeSource(
+  raw: string | undefined,
+): SuggestedNegativeSource {
+  const value = (raw ?? "").trim().toLowerCase();
+  if (value === "keyword_planner_noncommercial") {
+    return "keyword_planner_noncommercial";
+  }
+  if (
+    value === "llm_niche_antonym" ||
+    value === "niche_antonym" ||
+    value === "antonym"
+  ) {
+    return "llm_niche_antonym";
+  }
+  return "llm_negative_words";
 }

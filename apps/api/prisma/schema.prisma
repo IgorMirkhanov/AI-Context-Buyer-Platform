@@ -280,6 +280,7 @@ model SemanticNegativeSuggestion {
   projectId  String                   @map("project_id") @db.Uuid
   phrase     String
   reason     String                   @default("")
+  source     String                   @default("llm_negative_words")
   status     NegativeSuggestionStatus @default(pending)
   createdAt  DateTime                 @default(now()) @map("created_at")
   resolvedAt DateTime?                @map("resolved_at")

@@ -21,14 +21,22 @@ export type SemanticCore = {
   global_negatives: string[];
 };
 
+export type SuggestedNegativeSource =
+  | "keyword_planner_noncommercial"
+  | "llm_niche_antonym"
+  | "llm_negative_words";
+
 export type SuggestedNegativeWord = {
   phrase: string;
   reason: string;
+  source: SuggestedNegativeSource;
 };
 
 export type SemanticPipelineResult = {
   core: SemanticCore;
   suggested_negative_words: SuggestedNegativeWord[];
+  /** Минусы брифа после вычищения коммерческого/товарного ядра. */
+  sanitized_global_negatives?: string[];
 };
 
 export type SemanticBriefInput = {
@@ -57,4 +65,5 @@ export type KeywordIdea = {
   phrase: string;
   frequency: number;
   source: string;
+  competition?: string | null;
 };

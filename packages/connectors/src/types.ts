@@ -4,6 +4,8 @@ export type KeywordIdea = {
   phrase: string;
   frequency: number;
   source: string;
+  /** Keyword Planner competition enum (LOW/MEDIUM/HIGH); absent for mocks. */
+  competition?: string | null;
 };
 
 export type Credentials = {
@@ -174,7 +176,11 @@ export interface AdPlatformConnector {
     dateRange: unknown,
     auth?: PlatformAuth,
   ): Promise<PerformanceSnapshot[]>;
-  getKeywordIdeas(seedKeywords: string[], geo: string[]): Promise<KeywordIdea[]>;
+  getKeywordIdeas(
+    seedKeywords: string[],
+    geo: string[],
+    auth?: PlatformAuth,
+  ): Promise<KeywordIdea[]>;
   getSearchTerms(
     projectId: string,
     dateRange: unknown,

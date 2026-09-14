@@ -12,7 +12,7 @@ export function classifyIntentsUser(prompt: string): string {
 }
 
 export function nameClusterUser(prompt: string): string {
-  return `Дай короткое имя кластера и category (brand|feature|geo|generic) для ключей. JSON: {"name":"...","category":"generic"}.\n${prompt}`;
+  return `Дай короткое имя кластера и category (brand|feature|geo|generic) для ключей. Имя отражает продукт И услугу, если она одна (пример: «Сплит системы — покупка», «Кондиционеры — монтаж»). JSON: {"name":"...","category":"generic"}.\n${prompt}`;
 }
 
 export function suggestNearIntentUser(prompt: string): string {
@@ -24,5 +24,17 @@ export function suggestFromSeedWordsUser(prompt: string): string {
 }
 
 export function suggestNegativeWordsUser(prompt: string): string {
-  return `По брифу и собранным ключам предложи до 15 минус-слов или коротких минус-фраз для контекстной рекламы — специфичных для ниши, не универсальных («бесплатно», «вакансия» уже в брифе). Ищи в collectedKeywords и brief признаки нецелевого интента: DIY, обучение, развлечения, самолечение, скачать, видео, «своими руками», отзывы/обзоры как минус-токены. Не предлагай коммерческие CTA и не дублируй global_negative_keywords. Верни JSON: {"negatives":[{"phrase":"самолечение","reason":"информационный запрос, не услуга клиники"},...]}.\n${prompt}`;
+  return `По брифу (особенно product_description, usp, price_segment) и собранным ключам предложи до 15 минус-слов или коротких минус-фраз для контекстной рекламы.
+
+Раздели предложения по полю source:
+- "llm_niche_antonym" — антонимы и смежные бесплатные/DIY/карьерные интенты, СПЕЦИФИЧНЫЕ для ниши из брифа (пример: премиум ремонт → «бесплатно», «своими руками», «мастер класс»; b2b consulting → «вакансии», «стажировка»). Не копируй универсальный список — опирайся на нишу.
+- "llm_negative_words" — прочие нецелевые токены/фразы из collectedKeywords (обзоры, видео, скачать, развлечения), если они релевантны как минусы.
+
+Запрещено предлагать:
+- коммерческие CTA (купить/цена/заказать/установка/монтаж), если они есть в USP или услугах брифа;
+- названия товара/услуги из USP и product_description (кондиционер, сплит система, кондер и т.п.);
+- артикулы и модели с цифрами.
+
+Не дублируй global_negative_keywords. Предпочитай короткие минус-фразы (2–3 слова), а не обрезку коммерческого ядра.
+Верни JSON: {"negatives":[{"phrase":"своими руками","reason":"DIY вместо платного ремонта","source":"llm_niche_antonym"},...]}.\n${prompt}`;
 }

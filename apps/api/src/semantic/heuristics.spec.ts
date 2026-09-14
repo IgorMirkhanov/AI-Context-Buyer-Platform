@@ -1,6 +1,8 @@
 import {
   deriveMasksFromUsp,
   collapseConsecutiveDuplicateTokens,
+  dropDuplicateBoundaryTrigger,
+  combinedGeoCommercialMasks,
   filterKeywordIdeas,
   isCommercialKeyword,
   masksFromBrief,
@@ -136,6 +138,86 @@ describe('collapseConsecutiveDuplicateTokens', () => {
     expect(collapseConsecutiveDuplicateTokens('услуга цена цена')).toBe(
       'услуга цена',
     );
+  });
+});
+
+describe('dropDuplicateBoundaryTrigger', () => {
+  it('drops trailing commercial trigger that mirrors the leading one', () => {
+    expect(
+      dropDuplicateBoundaryTrigger(
+        'заказать выезд мастера в день обращения заказать',
+      ),
+    ).toBe('заказать выезд мастера в день обращения');
+    expect(dropDuplicateBoundaryTrigger('купить ноутбук купить')).toBe(
+      'купить ноутбук',
+    );
+  });
+
+  it('does not strip non-trigger boundary duplicates', () => {
+    expect(dropDuplicateBoundaryTrigger('мастер выезд мастер')).toBe(
+      'мастер выезд мастер',
+    );
+  });
+});
+
+describe('combinedGeoCommercialMasks — long USP', () => {
+  it('uses «стоимость … в {город}» for long multi-token services', () => {
+    const masks = combinedGeoCommercialMasks(
+      ['гарантия на работы 12 месяцев'],
+      ['RU-MOW'],
+    );
+    expect(masks).toEqual(
+      expect.arrayContaining([
+        'стоимость гарантия на работы 12 месяцев в москва',
+        'заказать гарантия на работы 12 месяцев москва',
+      ]),
+    );
+    expect(
+      masks.some((m) => m.endsWith('москва цена') || m.endsWith('москва стоимость')),
+    ).toBe(false);
+  });
+});
+
+describe('masksFromBrief — urgent master / warranty regression', () => {
+  it('does not produce «… цена» tail for long warranty USP', () => {
+    const brief: SemanticBriefInput = {
+      website_url: 'https://ac.example',
+      geo: ['RU-MOW'],
+      usp: [
+        'Срочный выезд мастера по кондиционерам',
+        'гарантия на работы 12 месяцев',
+      ],
+      target_audience: [],
+      global_negative_keywords: [],
+    };
+    const masks = masksFromBrief(brief, '');
+    expect(masks).toEqual(
+      expect.arrayContaining([
+        'срочный выезд мастера по кондиционерам',
+        'гарантия на работы 12 месяцев',
+        'стоимость гарантия на работы 12 месяцев в москва',
+      ]),
+    );
+    expect(
+      masks.some((m) =>
+        /гарантия на работы 12 месяцев москва (цена|стоимость)$/u.test(m),
+      ),
+    ).toBe(false);
+  });
+
+  it('filterKeywordIdeas collapses boundary «заказать … заказать»', () => {
+    const filtered = filterKeywordIdeas(
+      [
+        {
+          phrase: 'заказать выезд мастера в день обращения заказать',
+          frequency: 100,
+          source: 'mock_wordstat',
+        },
+      ],
+      [],
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].phrase).toBe('заказать выезд мастера в день обращения');
   });
 });
 

@@ -18,6 +18,7 @@ import {
   MockAttributionApi,
   MockGoogleAdsApi,
   MockKeywordIdeasProvider,
+  LiveGoogleKeywordIdeasProvider,
   MockYandexDirectApi,
   YANDEX_DEFAULT_OAUTH_SCOPE,
   YandexDirectConnector,
@@ -99,12 +100,15 @@ import { PlatformConnectionService } from './platform-connection.service';
               oauthConfig.developerToken,
               oauthConfig.loginCustomerId,
             );
+        const keywordIdeas = mock
+          ? new MockKeywordIdeasProvider()
+          : new LiveGoogleKeywordIdeasProvider(api);
         return new GoogleAdsConnector(
           oauthConfig,
           mock
             ? createMockGoogleOAuthClient(oauthConfig)
             : createGoogleOAuthClient(oauthConfig),
-          new MockKeywordIdeasProvider(),
+          keywordIdeas,
           api,
         );
       },

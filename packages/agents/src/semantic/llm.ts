@@ -35,7 +35,11 @@ export interface SemanticLlm {
     brief: SemanticBriefInput,
     collectedKeywords: string[],
   ): Promise<{
-    negatives: Array<{ phrase: string; reason: string }>;
+    negatives: Array<{
+      phrase: string;
+      reason: string;
+      source?: string;
+    }>;
     usage: LlmUsage;
   }>;
 }
@@ -107,7 +111,13 @@ export class HeuristicSemanticLlm implements SemanticLlm {
     const blob = phrases.join(" ");
     if (/\basus\b|\bhp\b|\bapple\b|\bsamsung\b/i.test(blob)) {
       category = "brand";
-    } else if (/москв|казах|алмат|питер|гео/i.test(blob)) {
+    } else if (
+      /москв|казах|алмат|питер/i.test(blob) &&
+      /кондиц|кондер|сплит|ноутбук|услуг|клиник|ремонт|установ|монтаж/i.test(
+        blob,
+      )
+    ) {
+      // Гео только вместе с нишевым товаром/услугой — иначе «шторы москва» уезжает в Geo.
       category = "geo";
     } else if (/игр|rtx|память|экран/i.test(blob)) {
       category = "feature";
@@ -161,7 +171,7 @@ export class HeuristicSemanticLlm implements SemanticLlm {
     _brief: SemanticBriefInput,
     _collectedKeywords: string[],
   ): Promise<{
-    negatives: Array<{ phrase: string; reason: string }>;
+    negatives: Array<{ phrase: string; reason: string; source?: string }>;
     usage: LlmUsage;
   }> {
     const started = Date.now();

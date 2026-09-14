@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConnectorsModule } from '../connectors/connectors.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { SemanticService } from './semantic.service';
 import { SemanticController } from './semantic.controller';
 
 @Module({
-  imports: [ConnectorsModule],
+  imports: [ConnectorsModule, forwardRef(() => ProjectsModule)],
   controllers: [SemanticController],
   providers: [SemanticService],
   exports: [SemanticService],

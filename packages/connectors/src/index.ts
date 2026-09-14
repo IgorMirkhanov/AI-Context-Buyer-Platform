@@ -29,6 +29,7 @@ export type {
 
 export {
   MockKeywordIdeasProvider,
+  LiveGoogleKeywordIdeasProvider,
   seedHasCommercialModifier,
 } from "./keyword-ideas";
 export type { KeywordIdeasProvider } from "./keyword-ideas";
@@ -70,8 +71,18 @@ export {
   LiveGoogleAdsApi,
   MockGoogleAdsApi,
   humanizeGoogleError,
+  isGoogleAdsAccessLevelError,
+  formatGoogleAdsError,
+  sanitizeNegativeKeywords,
+  mapGenerateKeywordIdeaResult,
+  GOOGLE_ADS_API_VERSION,
 } from "./google-ads.api";
 export type { GoogleAdsApi, GoogleAdsAuth } from "./google-ads.api";
+export {
+  googleGeoTargetConstants,
+  googleLanguageForGeo,
+  GOOGLE_GEO_TARGET_IDS,
+} from "./google-geo";
 
 export {
   MockAttributionApi,

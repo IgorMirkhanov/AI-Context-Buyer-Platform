@@ -2,10 +2,17 @@
 
 import { btnClass } from "@/ui/button";
 
+export type NegativeSuggestionSource =
+  | "keyword_planner_noncommercial"
+  | "llm_niche_antonym"
+  | "llm_negative_words"
+  | string;
+
 type NegativeSuggestion = {
   id: string;
   phrase: string;
   reason: string;
+  source?: NegativeSuggestionSource;
   status: "pending" | "accepted" | "rejected";
 };
 
@@ -15,6 +22,19 @@ type Props = {
   pending: boolean;
   onResolve: (suggestionId: string, action: "accept" | "reject") => void;
 };
+
+export function negativeSourceBadgeLabel(source?: string): string {
+  switch (source) {
+    case "keyword_planner_noncommercial":
+      return "keyword_planner_noncommercial";
+    case "llm_niche_antonym":
+      return "llm_niche_antonym";
+    case "llm_negative_words":
+      return "llm_negative_words";
+    default:
+      return source?.trim() || "llm_negative_words";
+  }
+}
 
 export function NegativeSuggestionsPanel({
   suggestions,
@@ -47,7 +67,12 @@ export function NegativeSuggestionsPanel({
               className="flex flex-wrap items-start justify-between gap-2 rounded border border-[var(--status-alert-border)] bg-[var(--bg-elevated)] px-3 py-2"
             >
               <div>
-                <p className="font-medium text-[var(--fg)]">{item.phrase}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-[var(--fg)]">{item.phrase}</p>
+                  <span className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--fg-muted)]">
+                    {negativeSourceBadgeLabel(item.source)}
+                  </span>
+                </div>
                 {item.reason ? (
                   <p className="text-xs text-[var(--fg-muted)]">{item.reason}</p>
                 ) : null}

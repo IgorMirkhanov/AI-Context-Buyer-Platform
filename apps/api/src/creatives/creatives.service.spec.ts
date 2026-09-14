@@ -27,6 +27,7 @@ describe('CreativesService LLM wiring', () => {
   const prisma = {
     project: { findFirst: jest.fn() },
     projectBrief: { findFirst: jest.fn() },
+    projectCampaignPlan: { findUnique: jest.fn() },
     semanticCluster: { findMany: jest.fn() },
     platformLimit: { findMany: jest.fn() },
     agentTask: {
@@ -39,8 +40,24 @@ describe('CreativesService LLM wiring', () => {
     llmCallLog: { create: jest.fn() },
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<void>) =>
       fn({
-        validationIssue: { deleteMany: jest.fn(), create: jest.fn() },
-        adCreative: { deleteMany: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'cr-1' }) },
+        validationIssue: {
+          deleteMany: jest.fn(),
+          create: jest.fn(),
+          createMany: jest.fn(),
+        },
+        adCreative: {
+          deleteMany: jest.fn(),
+          create: jest.fn().mockResolvedValue({ id: 'cr-1' }),
+          createMany: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'cr-1',
+              clusterId: 'cl-1',
+              type: 'headline1',
+              abGroup: 'A',
+            },
+          ]),
+        },
       }),
     ),
   };
@@ -71,6 +88,9 @@ describe('CreativesService LLM wiring', () => {
           forbidden_phrases: [],
         },
       },
+    });
+    prisma.projectCampaignPlan.findUnique.mockResolvedValue({
+      approved: true,
     });
     prisma.semanticCluster.findMany.mockResolvedValue([
       {

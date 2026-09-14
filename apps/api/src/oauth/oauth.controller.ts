@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Logger, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { ProjectsService } from '../projects/projects.service';
@@ -8,6 +8,8 @@ import { ConnectionVerificationFailedError } from '../projects/connection-verifi
 
 @Controller('oauth')
 export class OauthController {
+  private readonly log = new Logger(OauthController.name);
+
   constructor(
     private readonly projects: ProjectsService,
     private readonly config: ConfigService,
@@ -54,6 +56,12 @@ export class OauthController {
       await this.projects.completeOAuth(state, code);
       return res.redirect(`${webOrigin}/projects/${projectId}?oauth=connected`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.log.error(
+        `OAuth callback failed projectId=${projectId ?? 'unknown'}: ${message}`,
+        stack,
+      );
       if (err instanceof ConnectionVerificationFailedError) {
         return res.redirect(
           `${webOrigin}/projects/${err.projectId}?oauth=needs_reconnect`,

@@ -73,7 +73,13 @@ export class RemoteSemanticLlm implements SemanticLlm {
         masks,
         usage: toUsage("extract_masks", prompt, result),
       };
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[semantic] extractMasks LLM failed → heuristic: ${
+          err instanceof Error ? err.message.slice(0, 180) : "error"
+        }`,
+      );
       return this.heuristic.extractMasks(brief, landingText);
     }
   }
@@ -102,7 +108,13 @@ export class RemoteSemanticLlm implements SemanticLlm {
         intents,
         usage: toUsage("classify_intent", prompt, result),
       };
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[semantic] classifyIntents LLM failed → heuristic: ${
+          err instanceof Error ? err.message.slice(0, 180) : "error"
+        }`,
+      );
       return this.heuristic.classifyIntents(phrases);
     }
   }
@@ -127,7 +139,13 @@ export class RemoteSemanticLlm implements SemanticLlm {
         category,
         usage: toUsage("name_cluster", prompt, result),
       };
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[semantic] nameCluster LLM failed → heuristic: ${
+          err instanceof Error ? err.message.slice(0, 180) : "error"
+        }`,
+      );
       return this.heuristic.nameCluster(phrases);
     }
   }
@@ -203,14 +221,22 @@ export class RemoteSemanticLlm implements SemanticLlm {
     brief: SemanticBriefInput,
     collectedKeywords: string[],
   ): Promise<{
-    negatives: Array<{ phrase: string; reason: string }>;
+    negatives: Array<{ phrase: string; reason: string; source?: string }>;
     usage: LlmUsage;
   }> {
     if (collectedKeywords.length === 0) {
       return this.heuristic.suggestNegativeWords(brief, collectedKeywords);
     }
     const prompt = JSON.stringify({
-      brief,
+      brief: {
+        product_description: brief.product_description,
+        usp: brief.usp,
+        price_segment: brief.price_segment,
+        target_audience: brief.target_audience,
+        geo: brief.geo,
+        global_negative_keywords: brief.global_negative_keywords,
+        forbidden_phrases: brief.forbidden_phrases,
+      },
       collectedKeywords: collectedKeywords.slice(0, 120),
       global_negative_keywords: brief.global_negative_keywords,
     });
@@ -221,7 +247,11 @@ export class RemoteSemanticLlm implements SemanticLlm {
         maxTokens: 1024,
       });
       const parsed = this.parseJson<{
-        negatives?: Array<{ phrase?: string; reason?: string }>;
+        negatives?: Array<{
+          phrase?: string;
+          reason?: string;
+          source?: string;
+        }>;
       }>(result.text);
       const negatives = (parsed?.negatives ?? [])
         .map((item) => ({
@@ -230,14 +260,19 @@ export class RemoteSemanticLlm implements SemanticLlm {
             .toLowerCase()
             .replace(/\s+/g, " "),
           reason: (item.reason ?? "").trim(),
+          source: item.source,
         }))
         .filter((item) => item.phrase.length >= 2);
-      const unique = new Map<string, { phrase: string; reason: string }>();
+      const unique = new Map<
+        string,
+        { phrase: string; reason: string; source?: string }
+      >();
       for (const item of negatives) {
         if (!unique.has(item.phrase)) {
           unique.set(item.phrase, {
             phrase: item.phrase,
             reason: item.reason || "нецелевой интент в собранной семантике",
+            source: item.source,
           });
         }
       }
@@ -245,7 +280,13 @@ export class RemoteSemanticLlm implements SemanticLlm {
         negatives: [...unique.values()].slice(0, 15),
         usage: toUsage("suggest_negative_words", prompt, result),
       };
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[semantic] suggestNegativeWords LLM failed → heuristic: ${
+          err instanceof Error ? err.message.slice(0, 180) : "error"
+        }`,
+      );
       return this.heuristic.suggestNegativeWords(brief, collectedKeywords);
     }
   }

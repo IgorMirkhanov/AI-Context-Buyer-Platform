@@ -10,5 +10,6 @@ import { TokenRefreshService } from '../oauth/token-refresh.service';
   imports: [ConnectorsModule],
   controllers: [ProjectsController, OauthController],
   providers: [ProjectsService, PortfolioService, TokenRefreshService],
+  exports: [TokenRefreshService],
 })
 export class ProjectsModule {}

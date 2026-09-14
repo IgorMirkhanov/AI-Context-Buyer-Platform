@@ -5,11 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  AgentTaskStatus,
-  AgentType,
-  OpsAlertKind,
-} from '@prisma/client';
+import { OpsAlertKind } from '@prisma/client';
 import {
   evaluateOpsAlerts,
   OpsAlertDraft,
@@ -19,12 +15,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PipelineQueue } from '../pipeline/pipeline.queue';
 import { notifyAlertWebhook } from './alert-webhook';
 
-const PIPELINE_AGENTS: AgentType[] = [
-  AgentType.semantic,
-  AgentType.copywriting,
-  AgentType.validation,
-  AgentType.campaign_builder,
-];
+/** Не поднимать снова тот же scan-алерт сразу после «Понятно». */
+const SCAN_REOPEN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class AlertsService implements OnModuleInit {
@@ -134,18 +126,10 @@ export class AlertsService implements OnModuleInit {
 
   async scan(organizationId: string, projectId: string) {
     await this.requireProject(organizationId, projectId);
-    const [credential, latestTask, openRateLimit] = await Promise.all([
+    const [credential, openRateLimit] = await Promise.all([
       this.prisma.adPlatformCredential.findFirst({
         where: { projectId },
         select: { expiresAt: true },
-      }),
-      this.prisma.agentTask.findFirst({
-        where: {
-          projectId,
-          agentType: { in: PIPELINE_AGENTS },
-        },
-        orderBy: { startedAt: 'desc' },
-        select: { agentType: true, error: true, status: true },
       }),
       this.prisma.opsAlert.findFirst({
         where: {
@@ -155,19 +139,29 @@ export class AlertsService implements OnModuleInit {
         },
       }),
     ]);
+    // pipeline_failed только через recordPipelineFailure при живом сбое.
+    // Иначе каждый GET /alerts заново открывал старый failed semantic task.
     const drafts = evaluateOpsAlerts({
       now: new Date(),
       oauthExpiresAt: credential?.expiresAt ?? null,
-      pipelineFailed:
-        latestTask?.status === AgentTaskStatus.failed
-          ? { agent: latestTask.agentType, error: latestTask.error }
-          : null,
+      pipelineFailed: null,
       rateLimited: Boolean(openRateLimit),
       rateLimitDetail: openRateLimit?.detail ?? null,
     });
+    // Ложные «скоро истечёт» по access-токену Google (~1ч) — закрываем.
+    if (!drafts.some((draft) => draft.kind === 'oauth_expiring')) {
+      await this.prisma.opsAlert.updateMany({
+        where: {
+          projectId,
+          kind: OpsAlertKind.oauth_expiring,
+          acknowledgedAt: null,
+        },
+        data: { acknowledgedAt: new Date() },
+      });
+    }
     for (const draft of drafts) {
       if (draft.kind === 'platform_rate_limit') continue;
-      await this.upsertOpen(projectId, draft);
+      await this.upsertOpenFromScan(projectId, draft);
     }
   }
 
@@ -184,6 +178,24 @@ export class AlertsService implements OnModuleInit {
         );
       }
     }
+  }
+
+  private async upsertOpenFromScan(projectId: string, draft: OpsAlertDraft) {
+    const recentAck = await this.prisma.opsAlert.findFirst({
+      where: {
+        projectId,
+        kind: draft.kind as OpsAlertKind,
+        acknowledgedAt: { not: null },
+      },
+      orderBy: { acknowledgedAt: 'desc' },
+    });
+    if (
+      recentAck?.acknowledgedAt &&
+      Date.now() - recentAck.acknowledgedAt.getTime() < SCAN_REOPEN_COOLDOWN_MS
+    ) {
+      return recentAck;
+    }
+    return this.upsertOpen(projectId, draft);
   }
 
   private async upsertOpen(projectId: string, draft: OpsAlertDraft) {

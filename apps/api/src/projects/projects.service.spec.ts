@@ -15,6 +15,8 @@ import { signOAuthState } from '../security/oauth-state';
 import { ConnectionVerificationFailedError } from './connection-verification.error';
 import { PlatformConnectionService } from '../connectors/platform-connection.service';
 import { DEFAULT_CONNECTION_VERIFY_THROTTLE_MS } from '../connectors/platform-connection.service';
+import { TokenRefreshService } from '../oauth/token-refresh.service';
+import { AlertsService } from '../alerts/alerts.service';
 
 const TEST_KEY =
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -45,6 +47,12 @@ describe('ProjectsService', () => {
   const platformConnection = {
     verifyProjectConnection: jest.fn(),
     throttleMs: jest.fn(() => DEFAULT_CONNECTION_VERIFY_THROTTLE_MS),
+  };
+  const tokens = {
+    refreshProject: jest.fn().mockResolvedValue({ refreshed: false }),
+  };
+  const alerts = {
+    acknowledgeOauthAlerts: jest.fn().mockResolvedValue(undefined),
   };
   const yandex = {
     buildAuthorizeUrl: jest.fn(),
@@ -89,6 +97,8 @@ describe('ProjectsService', () => {
         },
         { provide: ConnectorRouter, useValue: connectors },
         { provide: PlatformConnectionService, useValue: platformConnection },
+        { provide: TokenRefreshService, useValue: tokens },
+        { provide: AlertsService, useValue: alerts },
         {
           provide: AccessService,
           useFactory: () => new AccessService(prisma as unknown as PrismaService),
@@ -379,6 +389,8 @@ describe('ProjectsService', () => {
         },
         { provide: ConnectorRouter, useValue: connectors },
         { provide: PlatformConnectionService, useValue: platformConnection },
+        { provide: TokenRefreshService, useValue: tokens },
+        { provide: AlertsService, useValue: alerts },
         {
           provide: AccessService,
           useFactory: () => new AccessService(prisma as unknown as PrismaService),
@@ -550,6 +562,7 @@ describe('ProjectsService', () => {
         ok: false,
         reason: 'Invalid OAuth token',
       });
+      prisma.adPlatformCredential.findFirst.mockResolvedValue(null);
       prisma.adPlatformCredential.update.mockImplementation(async ({ data }) => ({
         ...credential,
         ...data,

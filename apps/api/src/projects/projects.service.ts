@@ -30,6 +30,8 @@ import {
 import { signOAuthState, verifyOAuthState } from '../security/oauth-state';
 import { requireJwtSecret } from '../security/startup-secrets';
 import { ConnectionVerificationFailedError } from './connection-verification.error';
+import { TokenRefreshService } from '../oauth/token-refresh.service';
+import { AlertsService } from '../alerts/alerts.service';
 
 @Injectable()
 export class ProjectsService {
@@ -39,6 +41,8 @@ export class ProjectsService {
     private readonly connectors: ConnectorRouter,
     private readonly access: AccessService,
     private readonly platformConnection: PlatformConnectionService,
+    private readonly tokens: TokenRefreshService,
+    private readonly alerts: AlertsService,
   ) {}
 
   listForUser(user: JwtPayload) {
@@ -71,7 +75,22 @@ export class ProjectsService {
       (row) => row.platform === project.primaryPlatform,
     );
     if (credential) {
+      try {
+        await this.tokens.refreshProject(organizationId, project.id, {
+          force: false,
+        });
+        credential =
+          (await this.prisma.adPlatformCredential.findFirst({
+            where: {
+              projectId: project.id,
+              platform: project.primaryPlatform,
+            },
+          })) ?? credential;
+      } catch {
+        // refresh failed → verify below may mark needs_reconnect
+      }
       credential = await this.refreshConnectionVerificationIfDue(
+        organizationId,
         project.id,
         project.primaryPlatform,
         credential,
@@ -391,7 +410,13 @@ export class ProjectsService {
       apiVerifiedAt: Date | null;
       apiVerificationError: string | null;
     },
-  >(projectId: string, platform: AdPlatform, credential: T, now = new Date()) {
+  >(
+    organizationId: string,
+    projectId: string,
+    platform: AdPlatform,
+    credential: T,
+    now = new Date(),
+  ) {
     if (
       !shouldVerifyConnection(
         credential.apiVerifiedAt,
@@ -408,12 +433,16 @@ export class ProjectsService {
         credential,
       );
     const fields = verificationCheckFields(verification, now);
-    return this.prisma.adPlatformCredential.update({
+    const updated = await this.prisma.adPlatformCredential.update({
       where: {
         projectId_platform: { projectId, platform },
       },
       data: fields,
     });
+    if (verification.ok) {
+      await this.alerts.acknowledgeOauthAlerts(organizationId, projectId);
+    }
+    return updated;
   }
 
   private async requireProject(organizationId: string, id: string) {

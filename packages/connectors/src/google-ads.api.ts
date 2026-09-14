@@ -1,5 +1,11 @@
-import { PlatformApiError } from "./types";
+import { KeywordIdea, PlatformApiError } from "./types";
+import {
+  googleGeoTargetConstants,
+  googleLanguageForGeo,
+} from "./google-geo";
 import { defaultProjectApiLimiter, ProjectApiLimiter } from "./project-rate-limit";
+
+const KEYWORD_SEED_CHUNK = 20;
 
 export type GoogleAdsAuth = {
   accessToken: string;
@@ -70,6 +76,7 @@ export interface GoogleAdsApi {
     auth: GoogleAdsAuth,
     scope: { type: "campaign" | "ad_group"; id: string },
     negatives: string[],
+    excludeTexts?: string[],
   ): Promise<void>;
   searchPerformance(
     auth: GoogleAdsAuth,
@@ -93,15 +100,23 @@ export interface GoogleAdsApi {
       conversions: number;
     }>
   >;
+  generateKeywordIdeas(
+    auth: GoogleAdsAuth,
+    seedKeywords: string[],
+    geo: string[],
+  ): Promise<KeywordIdea[]>;
 }
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+/** Current Google Ads REST major version (v18 returned HTML 404 after sunset). */
+export const GOOGLE_ADS_API_VERSION = "v25";
 
 export class LiveGoogleAdsApi implements GoogleAdsApi {
   constructor(
     private readonly developerToken: string,
     private readonly loginCustomerId?: string,
-    private readonly version = "v18",
+    private readonly version = GOOGLE_ADS_API_VERSION,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly limiter: ProjectApiLimiter = defaultProjectApiLimiter,
   ) {}
@@ -115,7 +130,8 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
       {
         create: {
           name,
-          amountMicros: String(amountMicros),
+          amountMicros: String(Math.max(0, Math.round(amountMicros))),
+          deliveryMethod: "STANDARD",
           explicitlyShared: false,
         },
       },
@@ -127,6 +143,17 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     auth: GoogleAdsAuth,
     campaign: { name: string; budgetResource: string; status: "PAUSED" },
   ): Promise<string> {
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() + 1);
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 30);
+    end.setUTCHours(23, 59, 59, 0);
+    // v25 Campaign.start_date_time / end_date_time: "yyyy-MM-dd HH:mm:ss"
+    // (customer timezone; UTC is fine for create when TZ unknown).
+    const fmt = (d: Date) =>
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+
     const results = await this.mutate(auth, "campaigns", [
       {
         create: {
@@ -134,12 +161,19 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
           status: "PAUSED",
           advertisingChannelType: "SEARCH",
           campaignBudget: campaign.budgetResource,
-          manualCpc: { enhancedCpcEnabled: false },
+          // Empty ManualCpc matches Google Ads API samples (v25).
+          manualCpc: {},
+          // Required since Google Ads API ~v19.2 / EU political ads regulation.
+          containsEuPoliticalAdvertising:
+            "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
           networkSettings: {
             targetGoogleSearch: true,
             targetSearchNetwork: true,
             targetContentNetwork: false,
+            targetPartnerSearchNetwork: false,
           },
+          startDateTime: fmt(start),
+          endDateTime: fmt(end),
         },
       },
     ]);
@@ -244,13 +278,17 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     auth: GoogleAdsAuth,
     scope: { type: "campaign" | "ad_group"; id: string },
     negatives: string[],
+    excludeTexts: string[] = [],
   ): Promise<void> {
-    if (negatives.length === 0) return;
+    // Same text+matchType as an existing positive criterion → IMMUTABLE_FIELD
+    // on `negative` (cannot flip polarity; must remove then recreate).
+    const cleaned = sanitizeNegativeKeywords(negatives, excludeTexts);
+    if (cleaned.length === 0) return;
     if (scope.type === "campaign") {
       await this.mutate(
         auth,
         "campaignCriteria",
-        negatives.map((text) => ({
+        cleaned.map((text) => ({
           create: {
             campaign: resource(auth.customerId, "campaigns", scope.id),
             negative: true,
@@ -263,7 +301,7 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     await this.mutate(
       auth,
       "adGroupCriteria",
-      negatives.map((text) => ({
+      cleaned.map((text) => ({
         create: {
           adGroup: resource(auth.customerId, "adGroups", scope.id),
           negative: true,
@@ -383,6 +421,69 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     return [];
   }
 
+  async generateKeywordIdeas(
+    auth: GoogleAdsAuth,
+    seedKeywords: string[],
+    geo: string[],
+  ): Promise<KeywordIdea[]> {
+    const seeds = seedKeywords
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 200);
+    if (seeds.length === 0) {
+      return [];
+    }
+    const geoTargets = googleGeoTargetConstants(geo);
+    const language = googleLanguageForGeo(geo);
+    const ideas: KeywordIdea[] = [];
+    const seen = new Set<string>();
+
+    for (let i = 0; i < seeds.length; i += KEYWORD_SEED_CHUNK) {
+      const chunk = seeds.slice(i, i + KEYWORD_SEED_CHUNK);
+      const payload = await this.request<{
+        results?: Array<{
+          text?: string;
+          keywordIdeaMetrics?: {
+            avgMonthlySearches?: string | number;
+            competition?: string;
+          };
+        }>;
+      }>(auth, `customers/${auth.customerId}:generateKeywordIdeas`, {
+        language,
+        geoTargetConstants: geoTargets,
+        includeAdultKeywords: false,
+        keywordPlanNetwork: "GOOGLE_SEARCH",
+        keywordSeed: { keywords: chunk },
+      });
+
+      for (const row of payload.results ?? []) {
+        const mapped = mapGenerateKeywordIdeaResult(row);
+        if (!mapped) continue;
+        if (seen.has(mapped.phrase)) continue;
+        seen.add(mapped.phrase);
+        ideas.push(mapped);
+      }
+    }
+
+    // Limited API access sometimes returns rows without volume; keep seeds so
+    // semantic clustering is not empty (mock-quality floor, live when metrics exist).
+    if (ideas.length === 0) {
+      for (const seed of seeds) {
+        const phrase = seed.trim().toLowerCase().replace(/\s+/g, " ");
+        if (!phrase || seen.has(phrase)) continue;
+        seen.add(phrase);
+        ideas.push({
+          phrase,
+          frequency: 1,
+          competition: null,
+          source: "google_keyword_planner",
+        });
+      }
+    }
+
+    return ideas;
+  }
+
   private async mutate(
     auth: GoogleAdsAuth,
     service: string,
@@ -439,10 +540,14 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
           ),
       );
       const json = (await res.json().catch(() => ({}))) as T & {
-        error?: { message?: string; status?: string };
+        error?: {
+          message?: string;
+          status?: string;
+          details?: unknown[];
+        };
       };
       if (res.ok) return json;
-      const details = json.error?.message || `HTTP ${res.status}`;
+      const details = formatGoogleAdsError(json.error, res.status);
       if (RETRYABLE.has(res.status) && attempt < 4) {
         await sleep(400 * 2 ** attempt);
         continue;
@@ -554,9 +659,14 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
     auth: GoogleAdsAuth,
     scope: { type: "campaign" | "ad_group"; id: string },
     negatives: string[],
+    excludeTexts: string[] = [],
   ): Promise<void> {
     requireGoogleAuth(auth);
-    this.calls.push({ method: "addNegativeKeywords", payload: { scope, negatives } });
+    const cleaned = sanitizeNegativeKeywords(negatives, excludeTexts);
+    this.calls.push({
+      method: "addNegativeKeywords",
+      payload: { scope, negatives: cleaned, excludeTexts },
+    });
   }
 
   async searchPerformance(
@@ -626,6 +736,36 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
       conversions: 0,
     }));
   }
+
+  async generateKeywordIdeas(
+    auth: GoogleAdsAuth,
+    seedKeywords: string[],
+    geo: string[],
+  ): Promise<KeywordIdea[]> {
+    requireGoogleAuth(auth);
+    this.calls.push({
+      method: "generateKeywordIdeas",
+      payload: { seedKeywords, geo },
+    });
+    if (this.failAt === "generateKeywordIdeas") {
+      throw new PlatformApiError(
+        humanizeGoogleError(
+          "The developer token is only allowed to access test accounts",
+        ),
+        "generateKeywordIdeas",
+        "The developer token is only allowed to access test accounts",
+      );
+    }
+    return seedKeywords
+      .map((seed) => seed.trim().toLowerCase())
+      .filter(Boolean)
+      .map((phrase) => ({
+        phrase,
+        frequency: 100,
+        competition: "MEDIUM",
+        source: "google_keyword_planner",
+      }));
+  }
 }
 
 function requireGoogleAuth(auth: GoogleAdsAuth): void {
@@ -651,8 +791,81 @@ export function mapGoogleCampaignStatus(
   return "paused";
 }
 
+export function sanitizeNegativeKeywords(
+  negatives: string[],
+  excludeTexts: string[] = [],
+): string[] {
+  const exclude = new Set(
+    excludeTexts
+      .map((text) => text.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of negatives) {
+    const text = raw.trim().replace(/\s+/g, " ");
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (exclude.has(key) || seen.has(key)) continue;
+    // Google Ads keyword text limit (80 chars).
+    if (text.length > 80) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+export function formatGoogleAdsError(
+  error:
+    | {
+        message?: string;
+        status?: string;
+        details?: unknown[];
+      }
+    | undefined,
+  httpStatus: number,
+): string {
+  const base = error?.message || `HTTP ${httpStatus}`;
+  const bits: string[] = [base];
+  for (const detail of error?.details ?? []) {
+    if (!detail || typeof detail !== "object") continue;
+    const row = detail as {
+      errors?: Array<{
+        message?: string;
+        errorCode?: Record<string, string>;
+        location?: { fieldPathElements?: Array<{ fieldName?: string }> };
+      }>;
+    };
+    for (const item of row.errors ?? []) {
+      const fields = (item.location?.fieldPathElements ?? [])
+        .map((el) => el.fieldName)
+        .filter(Boolean)
+        .join(".");
+      const codes = item.errorCode
+        ? Object.entries(item.errorCode)
+            .filter(([, v]) => v && v !== "UNSPECIFIED")
+            .map(([k, v]) => `${k}=${v}`)
+            .join(",")
+        : "";
+      const part = [item.message, fields ? `field=${fields}` : "", codes]
+        .filter(Boolean)
+        .join(" · ");
+      if (part) bits.push(part);
+    }
+  }
+  return bits.join(" | ").slice(0, 800);
+}
+
 export function humanizeGoogleError(details: string): string {
   const lower = details.toLowerCase();
+  if (isGoogleAdsAccessLevelError(details)) {
+    return (
+      "Google Ads API отклонил запрос: у developer token пока нет Basic Access " +
+      "(доступ только к тестовым аккаунтам). Пока Google не одобрит Basic Access — " +
+      "поставьте GOOGLE_ADS_MOCK=1 для локальной семантики, либо используйте тестовый customer id. " +
+      `Детали: ${details}`
+    );
+  }
   if (lower.includes("policy") || lower.includes("disapproved")) {
     return `Google Ads отклонил материалы: ${details}`;
   }
@@ -660,6 +873,58 @@ export function humanizeGoogleError(details: string): string {
     return `Нет доступа к кабинету Google Ads: ${details}`;
   }
   return `Ошибка Google Ads: ${details}`;
+}
+
+/** Explorer / test-account-only developer token and related auth denials. */
+export function isGoogleAdsAccessLevelError(details: string): boolean {
+  const lower = details.toLowerCase();
+  return (
+    lower.includes("developer token") ||
+    lower.includes("test account") ||
+    lower.includes("only allowed for test") ||
+    lower.includes("basic access") ||
+    lower.includes("permission_denied") ||
+    lower.includes("permission denied") ||
+    lower.includes("user_permission_denied") ||
+    lower.includes("authorizationerror") ||
+    (lower.includes("authorization") && lower.includes("denied")) ||
+    lower.includes("not allowed for this customer") ||
+    lower.includes("customer not enabled")
+  );
+}
+
+/**
+ * Keep Planner rows with positive search volume.
+ * Competition UNSPECIFIED/UNKNOWN is common on limited API access — do not drop those.
+ */
+export function mapGenerateKeywordIdeaResult(row: {
+  text?: string;
+  keywordIdeaMetrics?: {
+    avgMonthlySearches?: string | number;
+    competition?: string;
+  };
+}): KeywordIdea | null {
+  const phrase = (row.text ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!phrase) return null;
+  const metrics = row.keywordIdeaMetrics;
+  if (!metrics) return null;
+  const raw = metrics.avgMonthlySearches;
+  if (raw === undefined || raw === null || raw === "") return null;
+  const frequency = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(frequency) || frequency <= 0) return null;
+  const competition = (metrics.competition ?? "").toUpperCase();
+  const usableCompetition =
+    competition &&
+    competition !== "UNSPECIFIED" &&
+    competition !== "UNKNOWN"
+      ? competition
+      : null;
+  return {
+    phrase,
+    frequency,
+    competition: usableCompetition,
+    source: "google_keyword_planner",
+  };
 }
 
 function resource(customerId: string, kind: string, id: string): string {

@@ -15,7 +15,7 @@ import {
   KeywordIdeasProvider,
   MockKeywordIdeasProvider,
 } from "./keyword-ideas";
-import { GoogleAdsApi, LiveGoogleAdsApi } from "./google-ads.api";
+import { GoogleAdsApi, LiveGoogleAdsApi, GOOGLE_ADS_API_VERSION } from "./google-ads.api";
 
 export const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -94,18 +94,50 @@ export function createGoogleOAuthClient(
 
     async listCustomerIds(accessToken: string): Promise<string[]> {
       const res = await fetch(
-        "https://googleads.googleapis.com/v18/customers:listAccessibleCustomers",
+        `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers:listAccessibleCustomers`,
         {
+          method: "GET",
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "developer-token": config.developerToken,
           },
         },
       );
-      if (!res.ok) {
-        throw new Error("Google Ads customer list failed");
+      const bodyText = await res.text();
+      let data: {
+        resourceNames?: string[];
+        error?: { message?: string; status?: string; code?: number };
+      } = {};
+      try {
+        data = bodyText ? (JSON.parse(bodyText) as typeof data) : {};
+      } catch {
+        data = {};
       }
-      const data = (await res.json()) as { resourceNames?: string[] };
+      if (!res.ok) {
+        const googleMessage =
+          data.error?.message ||
+          (bodyText.trim() ? bodyText.slice(0, 500) : `HTTP ${res.status}`);
+        const details = [
+          `HTTP ${res.status}`,
+          data.error?.status,
+          data.error?.code != null ? `code=${data.error.code}` : null,
+          googleMessage,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        // Structured JSON (same shape as apps/api JsonLogger) — connectors have no Nest DI.
+        // eslint-disable-next-line no-console
+        console.error(
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            level: "error",
+            context: "GoogleAdsOAuthClient.listCustomerIds",
+            requestId: null,
+            message: `Google Ads customer list failed: ${details}`,
+          }),
+        );
+        throw new Error(`Google Ads customer list failed: ${details}`);
+      }
       return (data.resourceNames ?? [])
         .map((name) => name.replace("customers/", "").replace(/-/g, ""))
         .filter(Boolean);
@@ -280,6 +312,7 @@ export class GoogleAdsConnector implements AdPlatformConnector {
       toGoogleAuth(auth, projectId),
       asScope(scope),
       negatives.map(asKeyword).filter(Boolean),
+      [],
     );
   }
 
@@ -339,8 +372,9 @@ export class GoogleAdsConnector implements AdPlatformConnector {
   async getKeywordIdeas(
     seedKeywords: string[],
     geo: string[],
+    auth?: PlatformAuth,
   ): Promise<KeywordIdea[]> {
-    return this.keywordIdeas.getKeywordIdeas(seedKeywords, geo);
+    return this.keywordIdeas.getKeywordIdeas(seedKeywords, geo, auth);
   }
 
   async getSearchTerms(

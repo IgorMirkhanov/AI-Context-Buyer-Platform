@@ -1,5 +1,11 @@
 export const OAUTH_EXPIRING_WITHIN_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Access-токены Google (~1 ч) не должны поднимать «переподключите».
+ * Алерт только для долгоживущих сроков (как у Яндекса), пока до истечения > 2 ч.
+ */
+export const OAUTH_ACCESS_TOKEN_ALERT_FLOOR_MS = 2 * 60 * 60 * 1000;
+
 export type OpsAlertKind =
   | "pipeline_failed"
   | "oauth_expiring"
@@ -24,13 +30,12 @@ export function evaluateOpsAlerts(input: OpsAlertInput): OpsAlertDraft[] {
   const alerts: OpsAlertDraft[] = [];
   if (input.oauthExpiresAt) {
     const msLeft = input.oauthExpiresAt.getTime() - input.now.getTime();
-    if (msLeft <= 0) {
-      alerts.push({
-        kind: "oauth_expired",
-        title: "OAuth-токен рекламного кабинета истёк",
-        detail: "Переподключите кабинет. Токен в открытом виде не показывается.",
-      });
-    } else if (msLeft <= OAUTH_EXPIRING_WITHIN_MS) {
+    // Истёкший / почти истёкший access token — норма; refresh_token обновит.
+    // oauth_expired пишется только при реальном сбое refresh.
+    if (
+      msLeft > OAUTH_ACCESS_TOKEN_ALERT_FLOOR_MS &&
+      msLeft <= OAUTH_EXPIRING_WITHIN_MS
+    ) {
       alerts.push({
         kind: "oauth_expiring",
         title: "OAuth-токен скоро истечёт",

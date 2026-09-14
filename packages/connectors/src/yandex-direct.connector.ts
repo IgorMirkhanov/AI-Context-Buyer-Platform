@@ -398,8 +398,9 @@ export class YandexDirectConnector implements AdPlatformConnector {
   async getKeywordIdeas(
     seedKeywords: string[],
     geo: string[],
+    auth?: PlatformAuth,
   ): Promise<KeywordIdea[]> {
-    return this.keywordIdeas.getKeywordIdeas(seedKeywords, geo);
+    return this.keywordIdeas.getKeywordIdeas(seedKeywords, geo, auth);
   }
 
   async getSearchTerms(

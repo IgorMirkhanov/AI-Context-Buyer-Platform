@@ -68,11 +68,16 @@ describe('AlertsService', () => {
     expect(db.opsAlert.create).not.toHaveBeenCalled();
   });
 
-  it('opens a pipeline failure alert for the requested project only', async () => {
+  it('does not reopen a stale pipeline failure on every alerts GET', async () => {
     await service.list('org-a', 'p1');
     expect(db.project.findFirst).toHaveBeenCalledWith({
       where: { id: 'p1', organizationId: 'org-a' },
     });
+    expect(db.opsAlert.create).not.toHaveBeenCalled();
+  });
+
+  it('still records a live pipeline failure once', async () => {
+    await service.recordPipelineFailure('org-a', 'p1', new Error('boom'));
     expect(db.opsAlert.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: 'p1',

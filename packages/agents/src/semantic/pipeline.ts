@@ -1,16 +1,19 @@
 import {
-  clusterByCosine,
-  EmbeddingsClient,
-  HashNgramEmbeddings,
-  InMemoryVectorIndex,
-  VectorIndex,
-} from "./embeddings";
-import {
+  clusteringPartitionKey,
+  dominantClusterPartition,
   extraNegativesFromBrief,
   filterKeywordIdeas,
+  filterNegativesAgainstCommercialCore,
   intentFromHeuristics,
+  isCommercialKeyword,
+  isPhraseOnNiche,
+  mergeSuggestedNegativeWords,
+  noncommercialPlannerNegativeCandidates,
+  normalizeNegativeSource,
   phraseClusteringCore,
-  tokenize,
+  productFamilyFromPhrase,
+  sanitizeBriefNegatives,
+  shouldCrossMinusPhrase,
 } from "./heuristics";
 import { HeuristicSemanticLlm, SemanticLlm } from "./llm";
 import {
@@ -27,6 +30,13 @@ import {
 import { validateSemanticCore } from "./validate";
 import { normalizePhrase } from "./qa-compare";
 import { mergeSeedMasks } from "../analysis/pipeline";
+import {
+  clusterByCosine,
+  EmbeddingsClient,
+  HashNgramEmbeddings,
+  InMemoryVectorIndex,
+  VectorIndex,
+} from "./embeddings";
 
 export type KeywordIdeasFn = (
   seeds: string[],
@@ -70,8 +80,17 @@ export function filterKeywordsStep(
   ideas: KeywordIdea[],
   brief: SemanticBriefInput,
 ): KeywordIdea[] {
-  const negatives = generateNegativesStep(brief);
-  return filterKeywordIdeas(ideas, negatives);
+  const safeBrief: SemanticBriefInput = {
+    ...brief,
+    global_negative_keywords: sanitizeBriefNegatives(
+      brief.global_negative_keywords,
+      brief,
+    ),
+  };
+  const negatives = generateNegativesStep(safeBrief);
+  return filterKeywordIdeas(ideas, negatives).filter((idea) =>
+    isPhraseOnNiche(idea.phrase, brief),
+  );
 }
 
 /** LLM-расширение по ручным seed-словам; heuristic-путь возвращает пустой список. */
@@ -165,9 +184,43 @@ export async function suggestNegativeWordsStep(
     result.push({
       phrase,
       reason: item.reason.trim() || "нецелевой интент в собранной семантике",
+      source: normalizeNegativeSource(item.source),
     });
   }
   return result.slice(0, 15);
+}
+
+/**
+ * Planner non-commercial tokens + LLM suggestions, без пересечения с коммерческим ядром.
+ */
+export function buildSuggestedNegativeWords(params: {
+  plannerIdeas: KeywordIdea[];
+  commercialKeywords: SemanticKeyword[];
+  llmSuggestions: SuggestedNegativeWord[];
+  brief: SemanticBriefInput;
+}): SuggestedNegativeWord[] {
+  const blocked = generateNegativesStep(params.brief);
+  const commercialPhrases = params.commercialKeywords
+    .filter((item) => isCommercialKeyword(item.phrase, item.intent))
+    .map((item) => item.phrase);
+  // USP / описание продукта — тоже коммерческое ядро (даже без «купить/цена»).
+  const protectedPhrases = [
+    ...commercialPhrases,
+    ...params.brief.usp,
+    params.brief.product_description ?? "",
+  ].filter(Boolean);
+  const fromPlanner = noncommercialPlannerNegativeCandidates(
+    params.plannerIdeas,
+    { alreadyBlocked: blocked },
+  );
+  const merged = mergeSuggestedNegativeWords(
+    fromPlanner,
+    params.llmSuggestions,
+  );
+  return filterNegativesAgainstCommercialCore(merged, protectedPhrases).slice(
+    0,
+    40,
+  );
 }
 
 export async function labelIntentStep(
@@ -220,25 +273,51 @@ export async function clusterStep(
   if (keywords.length === 0) {
     return [];
   }
-  const phrases = keywords.map((item) => item.phrase);
-  const clusteringTexts = phrases.map(phraseClusteringCore);
-  const vectors = await embeddings.embed(clusteringTexts);
-  phrases.forEach((phrase, i) => vectorIndex.upsert(phrase, vectors[i]));
 
-  const groups = clusterByCosine(phrases, vectors);
-  const byPhrase = new Map(keywords.map((item) => [item.phrase, item]));
+  // Жёсткие перегородки: тип услуги × продуктовое семейство, затем cosine внутри.
+  const partitions = new Map<string, SemanticKeyword[]>();
+  for (const item of keywords) {
+    const key = clusteringPartitionKey(item.phrase);
+    const list = partitions.get(key) ?? [];
+    list.push(item);
+    partitions.set(key, list);
+  }
+
   const clusters: SemanticCluster[] = [];
+  for (const group of partitions.values()) {
+    const phrases = group.map((item) => item.phrase);
+    const clusteringTexts = phrases.map(phraseClusteringCore);
+    const vectors = await embeddings.embed(clusteringTexts);
+    phrases.forEach((phrase, i) => vectorIndex.upsert(phrase, vectors[i]));
 
-  for (const group of groups) {
-    const { name, category } = await llm.nameCluster(group);
-    clusters.push({
-      cluster_name: name,
-      category,
-      keywords: group
+    const cosineGroups =
+      phrases.length === 1
+        ? [phrases]
+        : clusterByCosine(phrases, vectors);
+    const byPhrase = new Map(group.map((item) => [item.phrase, item]));
+
+    for (const cosineGroup of cosineGroups) {
+      // Чистота семьи: выкидываем фразы, не совпавшие с доминирующим семейством группы.
+      const { family } = dominantClusterPartition(cosineGroup);
+      const pure = cosineGroup.filter(
+        (phrase) =>
+          family === "family:other" ||
+          productFamilyFromPhrase(phrase) === family,
+      );
+      const members = (pure.length > 0 ? pure : cosineGroup)
         .map((phrase) => byPhrase.get(phrase))
-        .filter((item): item is SemanticKeyword => Boolean(item)),
-      negative_keywords: [],
-    });
+        .filter((item): item is SemanticKeyword => Boolean(item));
+      if (members.length === 0) continue;
+      const { name, category } = await llm.nameCluster(
+        members.map((item) => item.phrase),
+      );
+      clusters.push({
+        cluster_name: name,
+        category,
+        keywords: members,
+        negative_keywords: [],
+      });
+    }
   }
   return clusters;
 }
@@ -254,16 +333,18 @@ export function finalizeStep(
     }))
     .filter((cluster) => cluster.keywords.length > 0);
 
+  const metas = cleaned.map((cluster) =>
+    dominantClusterPartition(cluster.keywords.map((item) => item.phrase)),
+  );
+
   const withCross = cleaned.map((cluster, index) => {
+    const meta = metas[index];
     const others = cleaned
       .filter((_, i) => i !== index)
       .flatMap((item) => item.keywords.map((kw) => kw.phrase));
-    const distinctive = others.filter((phrase) => {
-      const tokens = new Set(tokenize(phrase));
-      return cluster.keywords.some((kw) =>
-        tokenize(kw.phrase).some((token) => tokens.has(token)),
-      );
-    });
+    const distinctive = others.filter((phrase) =>
+      shouldCrossMinusPhrase(meta.service, meta.family, phrase),
+    );
     return {
       ...cluster,
       negative_keywords: Array.from(
@@ -327,26 +408,37 @@ export async function runSemanticPipeline(
   };
 
   const extraSeeds = deps.extraSeeds ?? [];
+  const cleanedBrief: SemanticBriefInput = {
+    ...brief,
+    global_negative_keywords: sanitizeBriefNegatives(
+      brief.global_negative_keywords,
+      brief,
+    ),
+  };
   const masks = mergeSeedMasks(
-    await extractMasksStep(brief, wrapped, landingText),
+    await extractMasksStep(cleanedBrief, wrapped, landingText),
     extraSeeds,
   );
   const ideas = await expandKeywordsStep(
     masks,
-    brief.geo,
+    cleanedBrief.geo,
     deps.getKeywordIdeas,
   );
   const withSeedExpand = await suggestFromSeedWordsStep(
     ideas,
-    brief,
+    cleanedBrief,
     extraSeeds,
     wrapped,
   );
-  const filtered = filterKeywordsStep(withSeedExpand, brief);
-  const withNearIntent = await suggestNearIntentStep(filtered, brief, wrapped);
-  const relabeled = filterKeywordsStep(withNearIntent, brief);
+  const filtered = filterKeywordsStep(withSeedExpand, cleanedBrief);
+  const withNearIntent = await suggestNearIntentStep(
+    filtered,
+    cleanedBrief,
+    wrapped,
+  );
+  const relabeled = filterKeywordsStep(withNearIntent, cleanedBrief);
   const labeled = await labelIntentStep(relabeled, wrapped);
-  const globalNegatives = generateNegativesStep(brief);
+  const globalNegatives = generateNegativesStep(cleanedBrief);
   const clusters = await clusterStep(
     labeled,
     embeddings,
@@ -354,11 +446,29 @@ export async function runSemanticPipeline(
     vectorIndex,
   );
   const core = finalizeStep(clusters, globalNegatives);
+  if (core.clusters.length === 0) {
+    throw new Error(
+      "Семантика пустая: Keyword Planner не вернул фразы с частотностью и конкуренцией, " +
+        "либо все отфильтрованы минус-словами брифа. " +
+        "Сохраните бриф без минусов по ядру ниши (товар/услуга), обновите токен Google Ads " +
+        "или временно поставьте GOOGLE_ADS_MOCK=1 для локальной проверки.",
+    );
+  }
   validateSemanticCore(core);
-  const suggested_negative_words = await suggestNegativeWordsStep(
-    brief,
+  const llmNegatives = await suggestNegativeWordsStep(
+    cleanedBrief,
     labeled,
     wrapped,
   );
-  return { core, suggested_negative_words };
+  const suggested_negative_words = buildSuggestedNegativeWords({
+    plannerIdeas: ideas,
+    commercialKeywords: labeled,
+    llmSuggestions: llmNegatives,
+    brief: cleanedBrief,
+  });
+  return {
+    core,
+    suggested_negative_words,
+    sanitized_global_negatives: cleanedBrief.global_negative_keywords,
+  };
 }

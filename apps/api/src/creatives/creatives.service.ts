@@ -275,70 +275,96 @@ export class CreativesService {
     issues: ValidationIssueDraft[],
   ) {
     const byName = new Map(clusters.map((item) => [item.name, item.id]));
-    await this.prisma.$transaction(async (tx) => {
-      await tx.validationIssue.deleteMany({ where: { projectId } });
-      await tx.adCreative.deleteMany({ where: { projectId } });
+    const creativeRows: Array<{
+      projectId: string;
+      clusterId: string;
+      type: CreativeType;
+      text: string;
+      abGroup: string;
+      clusterName: string;
+    }> = [];
 
-      const createdIds: Array<{
-        clusterName: string;
-        abGroup: string;
-        type: CreativeType;
-        id: string;
-      }> = [];
-
-      for (const cluster of creatives) {
-        const clusterId = byName.get(cluster.cluster_name);
-        if (!clusterId) continue;
-        for (const ad of cluster.ads) {
-          const rows: Array<{ type: CreativeType; text: string }> = [
-            { type: CreativeType.headline1, text: ad.headline1 },
-            { type: CreativeType.headline2, text: ad.headline2 },
-            { type: CreativeType.description, text: ad.description },
-            ...ad.sitelinks.map((text) => ({
-              type: CreativeType.sitelink,
-              text,
-            })),
-            ...ad.callouts.map((text) => ({
-              type: CreativeType.callout,
-              text,
-            })),
-          ];
-          for (const row of rows) {
-            const saved = await tx.adCreative.create({
-              data: {
-                projectId,
-                clusterId,
-                type: row.type,
-                text: row.text,
-                abGroup: ad.ab_group,
-              },
-            });
-            createdIds.push({
-              clusterName: cluster.cluster_name,
-              abGroup: ad.ab_group,
-              type: row.type,
-              id: saved.id,
-            });
-          }
+    for (const cluster of creatives) {
+      const clusterId = byName.get(cluster.cluster_name);
+      if (!clusterId) continue;
+      for (const ad of cluster.ads) {
+        const rows: Array<{ type: CreativeType; text: string }> = [
+          { type: CreativeType.headline1, text: ad.headline1 },
+          { type: CreativeType.headline2, text: ad.headline2 },
+          { type: CreativeType.description, text: ad.description },
+          ...ad.sitelinks.map((text) => ({
+            type: CreativeType.sitelink,
+            text,
+          })),
+          ...ad.callouts.map((text) => ({
+            type: CreativeType.callout,
+            text,
+          })),
+        ];
+        for (const row of rows) {
+          creativeRows.push({
+            projectId,
+            clusterId,
+            type: row.type,
+            text: row.text,
+            abGroup: ad.ab_group,
+            clusterName: cluster.cluster_name,
+          });
         }
       }
+    }
 
-      for (const issue of issues) {
-        await tx.validationIssue.create({
-          data: {
-            projectId,
-            creativeId: matchCreativeId(createdIds, issue),
-            level:
-              issue.level === 'critical'
-                ? IssueLevel.critical
-                : IssueLevel.warning,
-            code: issue.code,
-            message: issue.message,
-            autoFixed: issue.autoFixed,
-          },
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.validationIssue.deleteMany({ where: { projectId } });
+        await tx.adCreative.deleteMany({ where: { projectId } });
+
+        if (creativeRows.length > 0) {
+          await tx.adCreative.createMany({
+            data: creativeRows.map(
+              ({ projectId: pid, clusterId, type, text, abGroup }) => ({
+                projectId: pid,
+                clusterId,
+                type,
+                text,
+                abGroup,
+              }),
+            ),
+          });
+        }
+
+        const saved = await tx.adCreative.findMany({
+          where: { projectId },
+          select: { id: true, clusterId: true, type: true, abGroup: true },
         });
-      }
-    });
+        const clusterIdToName = new Map(
+          clusters.map((item) => [item.id, item.name]),
+        );
+        const createdIds = saved.map((row) => ({
+          id: row.id,
+          clusterName: clusterIdToName.get(row.clusterId) ?? "",
+          abGroup: row.abGroup,
+          type: row.type,
+        }));
+
+        if (issues.length > 0) {
+          await tx.validationIssue.createMany({
+            data: issues.map((issue) => ({
+              projectId,
+              creativeId: matchCreativeId(createdIds, issue) ?? null,
+              level:
+                issue.level === 'critical'
+                  ? IssueLevel.critical
+                  : IssueLevel.warning,
+              code: issue.code,
+              message: issue.message,
+              autoFixed: issue.autoFixed,
+            })),
+          });
+        }
+      },
+      { timeout: 180_000, maxWait: 30_000 },
+    );
   }
 
   private toCore(

@@ -25,8 +25,22 @@ type NegativeSuggestion = {
   id: string;
   phrase: string;
   reason: string;
+  source?: string;
   status: "pending" | "accepted" | "rejected";
 };
+
+function negativeSourceBadge(source?: string): string {
+  switch (source) {
+    case "keyword_planner_noncommercial":
+      return "keyword_planner_noncommercial";
+    case "llm_niche_antonym":
+      return "llm_niche_antonym";
+    case "llm_negative_words":
+      return "llm_negative_words";
+    default:
+      return source?.trim() || "llm_negative_words";
+  }
+}
 
 type CampaignPlan = {
   campaigns: Array<{
@@ -291,8 +305,9 @@ export function PlanReviewPanel({
           <section>
             <h3 className="mb-2 font-medium">Минус-слова</h3>
             <p className="mb-3 text-sm text-[var(--fg-muted)]">
-              Из брифа и предложенные агентом по собранной семантике. При «Ок,
-              собирай» ожидающие предложения попадут в бриф автоматически.
+              Из брифа и то, что вы приняли из предложений агента. Перед «Ок,
+              собирай» отклоните лишнее (продажа, монтаж, модели, бренды) —
+              иначе ожидающие предложения попадут в бриф автоматически.
             </p>
             {allMinusWords.length > 0 ? (
               <p className="mb-2 text-sm">
@@ -313,7 +328,12 @@ export function PlanReviewPanel({
                     className="flex flex-wrap items-start justify-between gap-2 rounded border border-[var(--status-alert-border)] bg-[var(--status-alert-bg)] px-3 py-2 text-sm"
                   >
                     <div>
-                      <p className="font-medium">{item.phrase}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{item.phrase}</p>
+                        <span className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--fg-muted)]">
+                          {negativeSourceBadge(item.source)}
+                        </span>
+                      </div>
                       {item.reason ? (
                         <p className="text-xs text-[var(--fg-muted)]">{item.reason}</p>
                       ) : null}

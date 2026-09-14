@@ -10,7 +10,9 @@ import {
 import { SemanticService } from './semantic.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorRouter } from '../connectors/connector-router';
+import { PlatformConnectionService } from '../connectors/platform-connection.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { TokenRefreshService } from '../oauth/token-refresh.service';
 
 jest.mock('@context-buyer/agents', () => {
   const actual = jest.requireActual('@context-buyer/agents');
@@ -30,6 +32,7 @@ describe('SemanticService LLM wiring', () => {
     projectBrief: { findFirst: jest.fn() },
     briefs: undefined as unknown,
     projectAnalysis: { findUnique: jest.fn() },
+    adPlatformCredential: { findFirst: jest.fn().mockResolvedValue(null) },
     agentTask: {
       create: jest.fn(),
       update: jest.fn(),
@@ -64,6 +67,10 @@ describe('SemanticService LLM wiring', () => {
     forPlatform: jest.fn().mockReturnValue({
       getKeywordIdeas: jest.fn(),
     }),
+  };
+
+  const platformConnection = {
+    buildAuth: jest.fn(),
   };
 
   const ai = {
@@ -123,7 +130,14 @@ describe('SemanticService LLM wiring', () => {
         SemanticService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConnectorRouter, useValue: connectors },
+        { provide: PlatformConnectionService, useValue: platformConnection },
         { provide: AiProviderService, useValue: ai },
+        {
+          provide: TokenRefreshService,
+          useValue: {
+            refreshProject: jest.fn().mockResolvedValue({ refreshed: false }),
+          },
+        },
       ],
     }).compile();
     service = moduleRef.get(SemanticService);

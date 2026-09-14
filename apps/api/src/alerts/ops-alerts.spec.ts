@@ -15,7 +15,26 @@ describe('evaluateOpsAlerts', () => {
     ).toEqual([]);
   });
 
-  it('warns before OAuth expiry and after it, without including a token', () => {
+  it('ignores short-lived access-token expiry (Google ~1h)', () => {
+    expect(
+      evaluateOpsAlerts({
+        now,
+        oauthExpiresAt: new Date(now.getTime() - 60_000),
+        pipelineFailed: null,
+        rateLimited: false,
+      }),
+    ).toEqual([]);
+    expect(
+      evaluateOpsAlerts({
+        now,
+        oauthExpiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+        pipelineFailed: null,
+        rateLimited: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it('warns only for long-lived tokens nearing 7 days', () => {
     const expiring = evaluateOpsAlerts({
       now,
       oauthExpiresAt: new Date(now.getTime() + OAUTH_EXPIRING_WITHIN_MS / 2),
@@ -24,14 +43,6 @@ describe('evaluateOpsAlerts', () => {
     });
     expect(expiring.map((item) => item.kind)).toEqual(['oauth_expiring']);
     expect(JSON.stringify(expiring)).not.toMatch(/ya29|AQAAAA|token=/i);
-
-    const expired = evaluateOpsAlerts({
-      now,
-      oauthExpiresAt: new Date(now.getTime() - 60_000),
-      pipelineFailed: null,
-      rateLimited: false,
-    });
-    expect(expired[0].kind).toBe('oauth_expired');
   });
 
   it('flags a failed pipeline step and a platform rate limit', () => {

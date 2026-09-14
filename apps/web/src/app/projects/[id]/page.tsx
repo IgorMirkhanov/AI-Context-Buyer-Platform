@@ -61,6 +61,7 @@ type SemanticResult = {
     id: string;
     phrase: string;
     reason: string;
+    source?: string;
     status: "pending" | "accepted" | "rejected";
   }>;
   clusters: Array<{
@@ -1432,9 +1433,12 @@ function ProjectPageInner() {
           )}
         </div>
         {!connected && project.primaryPlatform === "google_ads" ? (
-          <p className="mt-3 font-mono text-[11px] text-[var(--fg-faint)]">
-            Нужны GOOGLE_ADS_CLIENT_ID / SECRET / DEVELOPER_TOKEN в .env, либо
-            GOOGLE_ADS_MOCK=1 для локального callback без Google.
+          <p className="mt-3 text-xs text-[var(--fg-faint)]">
+            Нужен живой OAuth-токен с правом на{" "}
+            <span className="font-medium">клиентский</span> кабинет (не только
+            MCC). Управляющий аккаунт задаёт developer token /{" "}
+            <span className="font-mono">LOGIN_CUSTOMER_ID</span>; кампании
+            создаются в подчинённом customer id. Нажмите «Переподключить».
           </p>
         ) : null}
       </Card>
