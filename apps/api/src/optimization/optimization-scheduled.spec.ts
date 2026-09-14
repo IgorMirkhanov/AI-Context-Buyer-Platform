@@ -120,7 +120,13 @@ describe('OptimizationService scheduled runs', () => {
         { provide: AlertsService, useValue: {} },
         { provide: AuditService, useValue: {} },
         { provide: PipelineQueue, useValue: queue },
-        { provide: AiProviderService, useValue: { tryResolveOptional: jest.fn() } },
+        {
+          provide: AiProviderService,
+          useValue: {
+            tryResolveOptional: jest.fn(),
+            assertWithinMonthlyCap: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
     service = moduleRef.get(OptimizationService);

@@ -15,6 +15,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import {
+  LLM_SPEND_CAP_REACHED,
+  LlmSpendCapReachedError,
+} from '../ai-provider/llm-spend-cap';
 
 @Injectable()
 export class AnalysisService {
@@ -58,6 +62,9 @@ export class AnalysisService {
         provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
+      if (mode !== 'heuristic') {
+        await this.ai.assertWithinMonthlyCap(organizationId);
+      }
       const existing = await this.prisma.projectAnalysis.findUnique({
         where: { projectId },
       });
@@ -112,7 +119,12 @@ export class AnalysisService {
 
       return this.getResult(organizationId, projectId, mode);
     } catch (err) {
-      const details = err instanceof Error ? err.message : 'Unknown analysis error';
+      const details =
+        err instanceof LlmSpendCapReachedError
+          ? LLM_SPEND_CAP_REACHED
+          : err instanceof Error
+            ? err.message
+            : 'Unknown analysis error';
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -121,6 +133,12 @@ export class AnalysisService {
           error: details,
         },
       });
+      if (err instanceof LlmSpendCapReachedError) {
+        throw new BadRequestException({
+          message: err.uiMessage,
+          details: LLM_SPEND_CAP_REACHED,
+        });
+      }
       throw new BadRequestException({
         message: 'Analysis failed',
         details,

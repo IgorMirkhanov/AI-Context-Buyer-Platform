@@ -38,6 +38,8 @@ import {
 
   PipelineRunningAgent,
 
+  normalizeCampaignDraft,
+
 } from '@context-buyer/agents';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -506,6 +508,8 @@ export class PipelineService implements OnModuleInit {
 
       draftPendingApproval: latestDraft?.status === CampaignDraftStatus.pending_approval,
 
+      draftPublishFailed: latestDraft?.status === CampaignDraftStatus.failed,
+
       hasLiveCampaign: campaignCount > 0,
 
       hasSnapshots: snapshotCount > 0,
@@ -514,7 +518,15 @@ export class PipelineService implements OnModuleInit {
 
       lastFailedAgent,
 
-      lastError: lastFailedAgent ? latestTask?.error ?? null : null,
+      lastError: lastFailedAgent
+
+        ? latestTask?.error ?? null
+
+        : latestDraft?.status === CampaignDraftStatus.failed
+
+          ? extractDraftPublishError(latestDraft.structureJson)
+
+          : null,
 
     };
 
@@ -556,7 +568,11 @@ export class PipelineService implements OnModuleInit {
 
         hasDraft: facts.hasDraft,
 
+        draftPublishFailed: facts.draftPublishFailed,
+
         hasLiveCampaign: facts.hasLiveCampaign,
+
+        lastError: facts.lastError,
 
       },
 
@@ -611,6 +627,19 @@ function canCancelPipeline(
 }
 
 
+
+function extractDraftPublishError(structureJson: unknown): string | null {
+  try {
+    const structure = normalizeCampaignDraft(structureJson);
+    for (const unit of structure.campaigns) {
+      const error = unit.publish?.error?.trim();
+      if (error) return error;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 function toRunningAgent(type: AgentType): PipelineRunningAgent | null {
 

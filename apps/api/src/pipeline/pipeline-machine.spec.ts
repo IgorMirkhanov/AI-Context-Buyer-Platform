@@ -22,6 +22,8 @@ const base: PipelineFacts = {
 
   draftPendingApproval: false,
 
+  draftPublishFailed: false,
+
   hasLiveCampaign: false,
 
   hasSnapshots: false,
@@ -321,6 +323,50 @@ describe('planPipeline', () => {
     expect(plan.nextStep).toBe('semantic');
 
     expect(plan.autoRunnable).toBe(true);
+
+  });
+
+
+
+  it('treats a failed campaign draft publish as failed, not awaiting_approval', () => {
+
+    const plan = planPipeline({
+
+      ...base,
+
+      hasBrief: true,
+
+      hasAnalysis: true,
+
+      hasSemantic: true,
+
+      hasPlan: true,
+
+      planApproved: true,
+
+      hasCreatives: true,
+
+      hasDraft: true,
+
+      draftPendingApproval: false,
+
+      draftPublishFailed: true,
+
+      lastError: 'Google Ads: Request contains an invalid argument',
+
+    });
+
+    expect(plan.stage).toBe('failed');
+
+    expect(plan.nextStep).toBeNull();
+
+    expect(plan.autoRunnable).toBe(false);
+
+    expect(plan.blockedReason).toBe(
+
+      'Google Ads: Request contains an invalid argument',
+
+    );
 
   });
 

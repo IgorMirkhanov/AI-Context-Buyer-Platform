@@ -62,6 +62,13 @@
 `llm_call_logs` этого `project_id`, без полного промпта). KPI «LLM $».
 Детализация — «Расходы LLM».
 
+**Spend cap (stage 18):** опционально `organizations.llm_monthly_cap_usd`.
+Перед платным вызовом LLM (не heuristic) суммируется `cost_usd` по всем
+проектам org за текущий UTC-месяц; при `spent >= cap` агент падает с
+`agent_tasks.error = "LLM spend cap reached"`, UI — понятное сообщение.
+Настройка: «Настройки → ИИ-провайдер», `POST /organization/ai-provider/spend-cap`.
+Биллинг `organizations.plan` по-прежнему не внедряется.
+
 ### Изоляция Connector Layer
 
 **Соблюдается:** агенты и оркестратор не импортируют SDK платформ. Живые

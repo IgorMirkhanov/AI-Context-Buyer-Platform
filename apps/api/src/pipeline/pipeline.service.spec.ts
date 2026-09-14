@@ -54,7 +54,10 @@ describe('PipelineService', () => {
 
     critical: 0,
 
-    draft: null as { status: CampaignDraftStatus } | null,
+    draft: null as {
+      status: CampaignDraftStatus;
+      structureJson?: unknown;
+    } | null,
 
     campaigns: 0,
 
@@ -565,6 +568,86 @@ describe('PipelineService', () => {
     expect(result.canCancel).toBe(false);
 
     expect(result.stage).not.toBe('awaiting_approval');
+
+  });
+
+
+
+  it('inspect surfaces failed draft publish error instead of awaiting_approval', async () => {
+
+    db.briefs = 1;
+
+    db.analysis = 1;
+
+    db.clusters = 1;
+
+    db.plan = { approved: true };
+
+    db.creatives = 2;
+
+    db.draft = {
+
+      status: CampaignDraftStatus.failed,
+
+      structureJson: {
+
+        campaigns: [
+
+          {
+
+            campaign: {
+
+              name: 'C1',
+
+              type: 'search',
+
+              budget_daily: 1000,
+
+              currency: 'RUB',
+
+              bidding_strategy: 'manual_cpc',
+
+              geo: ['RU'],
+
+              schedule: { days: ['mon'], hours: '9-18' },
+
+              href: 'https://example.com',
+
+              initial_status: 'paused',
+
+            },
+
+            ad_groups: [],
+
+            publish: {
+
+              step: 'createCampaign',
+
+              error: 'Collect performance snapshots first',
+
+            },
+
+          },
+
+        ],
+
+        global_negatives: [],
+
+      },
+
+    };
+
+    const result = await service.inspect('org-a', 'p1');
+
+    expect(result.stage).toBe('failed');
+
+    expect(result.facts.draftPublishFailed).toBe(true);
+
+    expect(result.facts.hasLiveCampaign).toBe(false);
+
+    expect(result.facts.lastError).toBe('Collect performance snapshots first');
+
+    expect(result.blockedReason).toBe('Collect performance snapshots first');
 
   });
 

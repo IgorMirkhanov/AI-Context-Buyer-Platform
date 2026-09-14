@@ -33,6 +33,7 @@
 | 13 | `13_OPTIMIZATION_SCHEDULE.md` | Расписание оптимизации |
 | 14 | `14_PRODUCTION_DEPLOY.md` | Прод-деплой: env, secret manager, порядок api→web, ограничения релиза |
 | 15 | `15_SECURITY_GATE_D3.md` | Результаты security-гейта D3 (audit, guards, rate-limit) |
+| 16 | `16_NEXT16_MIGRATION.md` | Оценка миграции Next 15→16 (postcss CVE; не блокер релиза) |
 
 ## Ключевые решения, зафиксированные в пакете
 

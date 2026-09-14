@@ -102,5 +102,6 @@ Probe: `apps/api/src/auth/user-throttler.guard.spec.ts` — user A exhausting a 
 ### Remaining before prod
 
 1. Plan Prisma / Next upgrades to clear nested advisory CVEs (or accept + monitor).  
+   Next 15→16 assessment: `docs/16_NEXT16_MIGRATION.md` — **not a release blocker** for GHSA-qx2v-qp2m-jg93.  
 2. Restore clean `npm run start:dev` / hoist `@nestjs/platform-express` if API process still fails PackageLoader.  
 3. Complete D2: real domain OAuth redirects + managed DB/Redis + `prisma migrate deploy` on prod URL.

@@ -13,6 +13,7 @@ organizations (
   plan text default 'free',          -- поле есть; смена тарифа/Stripe нет
   slug text unique null,             -- этап 10
   branding_json jsonb null,          -- этап 10
+  llm_monthly_cap_usd numeric(12,2) null, -- stage 18: optional org LLM spend ceiling
   created_at timestamptz
 )
 users (

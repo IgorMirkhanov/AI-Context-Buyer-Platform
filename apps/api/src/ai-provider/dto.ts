@@ -1,4 +1,12 @@
-import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpsertAiProviderDto {
   @IsIn(['anthropic', 'openai', 'groq', 'gemini'])
@@ -17,4 +25,12 @@ export class VerifyAiProviderDto {
   @IsString()
   @MinLength(8)
   apiKey?: string;
+}
+
+export class UpdateLlmSpendCapDto {
+  /** null clears the cap (unlimited). */
+  @ValidateIf((_, v) => v !== null)
+  @IsNumber()
+  @Min(0)
+  llmMonthlyCapUsd!: number | null;
 }

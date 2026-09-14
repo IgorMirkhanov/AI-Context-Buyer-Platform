@@ -29,6 +29,10 @@ import { PlatformConnectionService } from '../connectors/platform-connection.ser
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { validateProjectBrief, BriefValidationError } from '../briefs/brief.validator';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import {
+  LLM_SPEND_CAP_REACHED,
+  LlmSpendCapReachedError,
+} from '../ai-provider/llm-spend-cap';
 import { TokenRefreshService } from '../oauth/token-refresh.service';
 
 @Injectable()
@@ -90,6 +94,9 @@ export class SemanticService {
         provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
+      if (mode !== 'heuristic') {
+        await this.ai.assertWithinMonthlyCap(organizationId);
+      }
       const { core, suggested_negative_words, sanitized_global_negatives } =
         await runSemanticPipeline(brief, {
         llm,
@@ -141,6 +148,12 @@ export class SemanticService {
           error: details,
         },
       });
+      if (err instanceof LlmSpendCapReachedError) {
+        throw new BadRequestException({
+          message: err.uiMessage,
+          details: LLM_SPEND_CAP_REACHED,
+        });
+      }
       throw new BadRequestException({
         message: details,
         details,
@@ -182,6 +195,9 @@ export class SemanticService {
   }
 
   private formatSemanticError(err: unknown): string {
+    if (err instanceof LlmSpendCapReachedError) {
+      return LLM_SPEND_CAP_REACHED;
+    }
     if (err instanceof SemanticCoreValidationError) {
       return err.details.join('; ');
     }

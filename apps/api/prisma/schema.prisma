@@ -47,6 +47,8 @@ model Organization {
   plan         String    @default("free")
   slug         String?   @unique
   brandingJson Json?     @map("branding_json")
+  /// Optional org-wide monthly LLM spend ceiling (USD). Null = disabled.
+  llmMonthlyCapUsd Decimal? @map("llm_monthly_cap_usd") @db.Decimal(12, 2)
   createdAt    DateTime  @default(now()) @map("created_at")
   users        User[]
   projects     Project[]

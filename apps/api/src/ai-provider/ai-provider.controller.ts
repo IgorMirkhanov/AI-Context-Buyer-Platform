@@ -4,7 +4,11 @@ import { JwtPayload } from '../auth/jwt-payload';
 import { Roles } from '../tenancy/roles.decorator';
 import { RolesGuard } from '../tenancy/roles.guard';
 import { AiProviderService } from './ai-provider.service';
-import { UpsertAiProviderDto, VerifyAiProviderDto } from './dto';
+import {
+  UpdateLlmSpendCapDto,
+  UpsertAiProviderDto,
+  VerifyAiProviderDto,
+} from './dto';
 
 @Controller('organization/ai-provider')
 @UseGuards(JwtAuthGuard)
@@ -37,6 +41,19 @@ export class AiProviderController {
       req.user.organizationId,
       dto.provider,
       dto.apiKey,
+    );
+  }
+
+  @Post('spend-cap')
+  @UseGuards(RolesGuard)
+  @Roles('owner')
+  updateSpendCap(
+    @Req() req: { user: JwtPayload },
+    @Body() dto: UpdateLlmSpendCapDto,
+  ) {
+    return this.ai.updateLlmMonthlyCap(
+      req.user.organizationId,
+      dto.llmMonthlyCapUsd,
     );
   }
 }

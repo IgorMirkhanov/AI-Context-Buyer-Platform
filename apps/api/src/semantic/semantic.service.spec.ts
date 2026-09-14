@@ -75,6 +75,7 @@ describe('SemanticService LLM wiring', () => {
 
   const ai = {
     tryResolveOptional: jest.fn(),
+    assertWithinMonthlyCap: jest.fn().mockResolvedValue(undefined),
   };
 
   let service: SemanticService;

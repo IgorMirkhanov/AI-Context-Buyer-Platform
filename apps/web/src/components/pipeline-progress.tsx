@@ -9,7 +9,9 @@ export type PipelineFacts = {
   planApproved: boolean;
   hasCreatives: boolean;
   hasDraft: boolean;
+  draftPublishFailed?: boolean;
   hasLiveCampaign: boolean;
+  lastError?: string | null;
 };
 
 export type PipelineProgressData = {
@@ -66,7 +68,10 @@ const STAGE_LABELS: Record<string, string> = {
 
 type StepStatus = "done" | "running" | "waiting" | "next" | "upcoming";
 
-function stageTrackIndex(stage: string): number {
+function stageTrackIndex(stage: string, facts?: PipelineFacts): number {
+  if (stage === "failed" && facts?.draftPublishFailed) {
+    return 5; // launch step
+  }
   const map: Record<string, number> = {
     idle: 0,
     brief_submitted: 0,
@@ -112,7 +117,7 @@ function resolveStepStatus(
   pipeline: PipelineProgressData,
 ): StepStatus {
   const { stage, facts, queue } = pipeline;
-  const trackIndex = stageTrackIndex(stage);
+  const trackIndex = stageTrackIndex(stage, facts);
   const queueBusy =
     queue?.status === "queued" || queue?.status === "active";
   const humanGate = HUMAN_GATE_STAGES.has(stage);

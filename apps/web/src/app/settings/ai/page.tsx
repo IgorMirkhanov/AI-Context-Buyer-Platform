@@ -27,6 +27,11 @@ type StatusResponse = {
   ready: boolean;
   ok?: boolean;
   providers: ProviderStatus[];
+  spend?: {
+    llmMonthlyCapUsd: number | null;
+    spentUsdThisMonth: number;
+    month: string;
+  };
 };
 
 type Me = {
@@ -59,9 +64,11 @@ export default function AiProviderSettingsPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [provider, setProvider] = useState<ProviderName>("anthropic");
   const [apiKey, setApiKey] = useState("");
+  const [capInput, setCapInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [capPending, setCapPending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load() {
@@ -71,6 +78,11 @@ export default function AiProviderSettingsPage() {
     ]);
     setMe(user);
     setStatus(current);
+    setCapInput(
+      current.spend?.llmMonthlyCapUsd != null
+        ? String(current.spend.llmMonthlyCapUsd)
+        : "",
+    );
     setLoadError(null);
   }
 
@@ -138,6 +150,46 @@ export default function AiProviderSettingsPage() {
       );
     } finally {
       setPending(false);
+    }
+  }
+
+  async function onSaveCap(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setInfo(null);
+    setCapPending(true);
+    try {
+      const trimmed = capInput.trim();
+      const llmMonthlyCapUsd =
+        trimmed === "" ? null : Number(trimmed.replace(",", "."));
+      if (llmMonthlyCapUsd != null && !Number.isFinite(llmMonthlyCapUsd)) {
+        setError("Лимит должен быть числом в USD или пустым полем");
+        return;
+      }
+      const next = await api<StatusResponse>(
+        "/organization/ai-provider/spend-cap",
+        {
+          method: "POST",
+          body: JSON.stringify({ llmMonthlyCapUsd }),
+        },
+      );
+      setStatus(next);
+      setCapInput(
+        next.spend?.llmMonthlyCapUsd != null
+          ? String(next.spend.llmMonthlyCapUsd)
+          : "",
+      );
+      setInfo(
+        llmMonthlyCapUsd == null
+          ? "Месячный лимит LLM отключён."
+          : `Месячный лимит LLM: $${llmMonthlyCapUsd.toFixed(2)}.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Не удалось сохранить лимит",
+      );
+    } finally {
+      setCapPending(false);
     }
   }
 
@@ -263,6 +315,47 @@ export default function AiProviderSettingsPage() {
       ) : (
         <Alert tone="info">Ключ может задать только сотрудник агентства.</Alert>
       )}
+
+      {me.canWrite ? (
+        <div className="mt-4">
+          <Card>
+            <form onSubmit={onSaveCap} className="flex flex-col gap-3">
+              <CardTitle>Месячный лимит расходов на LLM</CardTitle>
+              <CardHint>
+                Опционально. Сумма по всем проектам организации за текущий месяц
+                (UTC) из журнала вызовов. Пустое поле — без лимита. При превышении
+                агенты с платным ИИ останавливаются до смены лимита или нового
+                месяца.
+              </CardHint>
+              <p className="text-sm text-[var(--fg-muted)]">
+                Потрачено в {status?.spend?.month ?? "—"}:{" "}
+                <strong>
+                  ${(status?.spend?.spentUsdThisMonth ?? 0).toFixed(2)}
+                </strong>
+                {status?.spend?.llmMonthlyCapUsd != null
+                  ? ` из $${status.spend.llmMonthlyCapUsd.toFixed(2)}`
+                  : " (лимит не задан)"}
+              </p>
+              <label className="text-sm">
+                Лимит, USD / месяц
+                <input
+                  className="ui-input mt-1"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={capInput}
+                  onChange={(e) => setCapInput(e.target.value)}
+                  placeholder="например 50"
+                />
+              </label>
+              <Button type="submit" variant="secondary" disabled={capPending}>
+                {capPending ? "Сохраняем…" : "Сохранить лимит"}
+              </Button>
+            </form>
+          </Card>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

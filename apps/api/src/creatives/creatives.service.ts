@@ -27,6 +27,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import {
+  LLM_SPEND_CAP_REACHED,
+  LlmSpendCapReachedError,
+} from '../ai-provider/llm-spend-cap';
 
 @Injectable()
 export class CreativesService {
@@ -106,6 +110,9 @@ export class CreativesService {
           });
         },
       });
+      if (mode !== 'heuristic') {
+        await this.ai.assertWithinMonthlyCap(organizationId);
+      }
       const result = await runCopyAndValidate(core, marketing, limits, writer);
 
       await this.persist(projectId, clusters, result.creatives, result.issues);
@@ -155,7 +162,12 @@ export class CreativesService {
       });
       return { ...(await this.getResult(organizationId, projectId)), llmMode: mode };
     } catch (err) {
-      const details = err instanceof Error ? err.message : 'copywriting failed';
+      const details =
+        err instanceof LlmSpendCapReachedError
+          ? LLM_SPEND_CAP_REACHED
+          : err instanceof Error
+            ? err.message
+            : 'copywriting failed';
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -164,6 +176,12 @@ export class CreativesService {
           error: details,
         },
       });
+      if (err instanceof LlmSpendCapReachedError) {
+        throw new BadRequestException({
+          message: err.uiMessage,
+          details: LLM_SPEND_CAP_REACHED,
+        });
+      }
       throw new BadRequestException({
         message: 'Copywriting pipeline failed',
         details,

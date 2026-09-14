@@ -39,6 +39,10 @@ import { PipelineQueue } from '../pipeline/pipeline.queue';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
 import {
+  LLM_SPEND_CAP_REACHED,
+  LlmSpendCapReachedError,
+} from '../ai-provider/llm-spend-cap';
+import {
   decryptSecret,
   parseTokenEncryptionKey,
 } from '../security/token-encryption';
@@ -279,6 +283,9 @@ export class OptimizationService implements OnModuleInit {
         provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
+      if (mode !== 'heuristic') {
+        await this.ai.assertWithinMonthlyCap(organizationId);
+      }
       const plan = await buildOptimizationPlan(
         {
           period: periods.current,
@@ -343,11 +350,13 @@ export class OptimizationService implements OnModuleInit {
       return { ...(await this.list(organizationId, projectId)), llmMode: mode };
     } catch (err) {
       const details =
-        err instanceof OptimizationPlanValidationError
-          ? err.details.join('; ')
-          : err instanceof Error
-            ? err.message
-            : 'optimization failed';
+        err instanceof LlmSpendCapReachedError
+          ? LLM_SPEND_CAP_REACHED
+          : err instanceof OptimizationPlanValidationError
+            ? err.details.join('; ')
+            : err instanceof Error
+              ? err.message
+              : 'optimization failed';
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -356,6 +365,12 @@ export class OptimizationService implements OnModuleInit {
           error: details,
         },
       });
+      if (err instanceof LlmSpendCapReachedError) {
+        throw new BadRequestException({
+          message: err.uiMessage,
+          details: LLM_SPEND_CAP_REACHED,
+        });
+      }
       throw new BadRequestException({
         message: 'Optimization pipeline failed',
         details,

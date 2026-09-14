@@ -57,7 +57,10 @@ describe('OptimizationService LLM wiring', () => {
     ),
   };
 
-  const ai = { tryResolveOptional: jest.fn() };
+  const ai = {
+    tryResolveOptional: jest.fn(),
+    assertWithinMonthlyCap: jest.fn().mockResolvedValue(undefined),
+  };
   const config = { get: jest.fn() };
   const connectors = { forPlatform: jest.fn() };
   const alerts = {};

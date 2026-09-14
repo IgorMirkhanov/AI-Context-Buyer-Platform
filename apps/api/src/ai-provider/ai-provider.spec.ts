@@ -57,6 +57,13 @@ describe('AiProviderService', () => {
       upsert: jest.fn(),
       update: jest.fn(),
     },
+    organization: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    llmCallLog: {
+      aggregate: jest.fn(),
+    },
   };
   const config = {
     get: jest.fn((name: string) => {
@@ -73,6 +80,8 @@ describe('AiProviderService', () => {
       return undefined;
     });
     prisma.aiProviderCredential.findUnique.mockResolvedValue(null);
+    prisma.organization.findUnique.mockResolvedValue({ llmMonthlyCapUsd: null });
+    prisma.llmCallLog.aggregate.mockResolvedValue({ _sum: { costUsd: 0 } });
     const module = await Test.createTestingModule({
       providers: [
         AiProviderService,
@@ -181,5 +190,34 @@ describe('AiProviderService', () => {
       }),
     );
     fetchSpy.mockRestore();
+  });
+
+  it('does not block when monthly LLM cap is unset', async () => {
+    await expect(service.assertWithinMonthlyCap('org-1')).resolves.toBeUndefined();
+  });
+
+  it('blocks paid LLM when month spend reaches the org cap', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ llmMonthlyCapUsd: 10 });
+    prisma.llmCallLog.aggregate.mockResolvedValue({
+      _sum: { costUsd: 10.5 },
+    });
+    await expect(service.assertWithinMonthlyCap('org-1')).rejects.toMatchObject({
+      message: 'LLM spend cap reached',
+      spentUsd: 10.5,
+      capUsd: 10,
+    });
+  });
+
+  it('includes spend status on getStatus', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ llmMonthlyCapUsd: 25 });
+    prisma.llmCallLog.aggregate.mockResolvedValue({
+      _sum: { costUsd: 3.25 },
+    });
+    const status = await service.getStatus('org-1');
+    expect(status.spend).toEqual({
+      llmMonthlyCapUsd: 25,
+      spentUsdThisMonth: 3.25,
+      month: expect.stringMatching(/^\d{4}-\d{2}$/),
+    });
   });
 });

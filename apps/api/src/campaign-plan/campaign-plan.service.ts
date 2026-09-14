@@ -15,6 +15,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectBriefPayload } from '../briefs/brief.schema';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import {
+  LLM_SPEND_CAP_REACHED,
+  LlmSpendCapReachedError,
+} from '../ai-provider/llm-spend-cap';
 import { SemanticService } from '../semantic/semantic.service';
 
 @Injectable()
@@ -85,6 +89,9 @@ export class CampaignPlanService {
         provider: credentials?.provider ?? null,
         onFallback: (message) => this.log.warn(message),
       });
+      if (mode !== 'heuristic') {
+        await this.ai.assertWithinMonthlyCap(organizationId);
+      }
       const plan = await runCampaignPlanPipeline(brief, clusters, {
         writer,
         onLlmCall: async (usage) => {
@@ -130,11 +137,13 @@ export class CampaignPlanService {
       return this.getResult(organizationId, projectId);
     } catch (err) {
       const details =
-        err instanceof CampaignPlanValidationError
-          ? err.details.join('; ')
-          : err instanceof Error
-            ? err.message
-            : 'Campaign plan failed';
+        err instanceof LlmSpendCapReachedError
+          ? LLM_SPEND_CAP_REACHED
+          : err instanceof CampaignPlanValidationError
+            ? err.details.join('; ')
+            : err instanceof Error
+              ? err.message
+              : 'Campaign plan failed';
       await this.prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -143,6 +152,12 @@ export class CampaignPlanService {
           error: details,
         },
       });
+      if (err instanceof LlmSpendCapReachedError) {
+        throw new BadRequestException({
+          message: err.uiMessage,
+          details: LLM_SPEND_CAP_REACHED,
+        });
+      }
       throw new BadRequestException({
         message: 'Campaign plan failed',
         details,

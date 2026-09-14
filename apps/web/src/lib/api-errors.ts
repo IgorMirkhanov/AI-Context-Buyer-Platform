@@ -36,6 +36,16 @@ export function localizeApiError(message: string): string {
     );
   }
 
+  if (
+    message === "LLM spend cap reached" ||
+    /LLM spend cap reached/i.test(message)
+  ) {
+    return (
+      "Достигнут месячный лимит расходов на ИИ. " +
+      "Увеличьте лимит в «Настройки → ИИ-провайдер» или дождитесь следующего месяца."
+    );
+  }
+
   if (/Copywriting pipeline failed/i.test(message)) {
     return (
       "Объявления не сохранились (часто из‑за большого числа кластеров). " +

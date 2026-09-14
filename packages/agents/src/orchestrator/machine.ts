@@ -40,6 +40,8 @@ export type PipelineFacts = {
   criticalIssues: number;
   hasDraft: boolean;
   draftPendingApproval: boolean;
+  /** Latest campaign_draft.status === failed (publishUnit error). */
+  draftPublishFailed: boolean;
   hasLiveCampaign: boolean;
   hasSnapshots: boolean;
   runningAgent: PipelineRunningAgent | null;
@@ -78,7 +80,11 @@ export function planPipeline(facts: PipelineFacts): PipelinePlan {
     return {
       stage,
       nextStep,
-      blockedReason: facts.lastError ?? "Последний шаг пайплайна завершился с ошибкой",
+      blockedReason:
+        facts.lastError ??
+        (facts.draftPublishFailed
+          ? "Публикация кампании завершилась с ошибкой"
+          : "Последний шаг пайплайна завершился с ошибкой"),
       autoRunnable: nextStep !== null,
     };
   }
@@ -126,6 +132,7 @@ export function deriveStage(facts: PipelineFacts): PipelineStage {
   if (facts.runningAgent === "copywriting") return "copywriting_in_progress";
   if (facts.runningAgent === "validation") return "validation_in_progress";
   if (facts.lastFailedAgent) return "failed";
+  if (facts.draftPublishFailed) return "failed";
   if (facts.hasLiveCampaign && facts.hasSnapshots) return "live_optimizing";
   if (facts.hasLiveCampaign) return "launched";
   if (facts.draftPendingApproval || facts.hasDraft) return "awaiting_approval";
@@ -202,7 +209,10 @@ export function planFullRunToDraft(facts: PipelineFacts): PipelineFullRunPlan {
       stage,
       action,
       blockedReason:
-        facts.lastError ?? "Последний шаг пайплайна завершился с ошибкой",
+        facts.lastError ??
+        (facts.draftPublishFailed
+          ? "Публикация кампании завершилась с ошибкой"
+          : "Последний шаг пайплайна завершился с ошибкой"),
       runnable: action !== null,
     };
   }

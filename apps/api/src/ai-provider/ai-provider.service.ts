@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   AiProvider,
   AiProviderCredentialStatus,
+  Prisma,
 } from '@prisma/client';
 import {
   AI_PROVIDER_REQUIRED_MESSAGE,
@@ -23,6 +24,10 @@ import {
   encryptSecret,
   parseTokenEncryptionKey,
 } from '../security/token-encryption';
+import {
+  LlmSpendCapReachedError,
+  utcMonthRange,
+} from './llm-spend-cap';
 
 export type AiProviderPublicStatus = {
   provider: AiProviderName;
@@ -31,6 +36,14 @@ export type AiProviderPublicStatus = {
   source: 'database' | 'env' | null;
   keyHint: string | null;
   lastVerifiedAt: string | null;
+};
+
+export type LlmSpendStatus = {
+  /** Null when the org has not enabled a monthly ceiling. */
+  llmMonthlyCapUsd: number | null;
+  /** Sum of llm_call_logs.cost_usd for all org projects in the current UTC month. */
+  spentUsdThisMonth: number;
+  month: string;
 };
 
 const PROVIDERS: AiProviderName[] = ['anthropic', 'groq', 'gemini', 'openai'];
@@ -49,6 +62,7 @@ export class AiProviderService {
     if (!resolved) {
       throw new BadRequestException(AI_PROVIDER_REQUIRED_MESSAGE);
     }
+    await this.assertWithinMonthlyCap(organizationId);
     return resolved;
   }
 
@@ -57,6 +71,73 @@ export class AiProviderService {
     organizationId: string,
   ): Promise<ResolvedAiKey | null> {
     return this.resolveAny(organizationId);
+  }
+
+  /**
+   * Call before a paid LLM provider run (mode !== heuristic).
+   * No-op when llm_monthly_cap_usd is null.
+   */
+  async assertWithinMonthlyCap(organizationId: string): Promise<void> {
+    const spend = await this.getLlmSpendStatus(organizationId);
+    if (spend.llmMonthlyCapUsd == null) {
+      return;
+    }
+    if (spend.spentUsdThisMonth >= spend.llmMonthlyCapUsd) {
+      throw new LlmSpendCapReachedError(
+        spend.spentUsdThisMonth,
+        spend.llmMonthlyCapUsd,
+      );
+    }
+  }
+
+  async getLlmSpendStatus(organizationId: string): Promise<LlmSpendStatus> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { llmMonthlyCapUsd: true },
+    });
+    const { from, toExclusive } = utcMonthRange();
+    const agg = await this.prisma.llmCallLog.aggregate({
+      where: {
+        createdAt: { gte: from, lt: toExclusive },
+        project: { organizationId },
+      },
+      _sum: { costUsd: true },
+    });
+    const spent = Number(agg._sum.costUsd ?? 0);
+    const cap =
+      org?.llmMonthlyCapUsd == null ? null : Number(org.llmMonthlyCapUsd);
+    return {
+      llmMonthlyCapUsd: cap,
+      spentUsdThisMonth: Number.isFinite(spent) ? spent : 0,
+      month: from.toISOString().slice(0, 7),
+    };
+  }
+
+  async updateLlmMonthlyCap(
+    organizationId: string,
+    llmMonthlyCapUsd: number | null,
+  ): Promise<{
+    ready: boolean;
+    providers: AiProviderPublicStatus[];
+    spend: LlmSpendStatus;
+  }> {
+    if (llmMonthlyCapUsd != null) {
+      if (!Number.isFinite(llmMonthlyCapUsd) || llmMonthlyCapUsd < 0) {
+        throw new BadRequestException(
+          'llmMonthlyCapUsd must be a non-negative number or null',
+        );
+      }
+    }
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        llmMonthlyCapUsd:
+          llmMonthlyCapUsd == null
+            ? null
+            : new Prisma.Decimal(llmMonthlyCapUsd.toFixed(2)),
+      },
+    });
+    return this.getStatus(organizationId);
   }
 
   async resolveApiKey(
@@ -70,13 +151,20 @@ export class AiProviderService {
   async getStatus(organizationId: string): Promise<{
     ready: boolean;
     providers: AiProviderPublicStatus[];
+    spend: LlmSpendStatus;
   }> {
-    const providers = await Promise.all(
-      PROVIDERS.map((provider) => this.publicStatus(organizationId, provider)),
-    );
+    const [providers, spend] = await Promise.all([
+      Promise.all(
+        PROVIDERS.map((provider) => this.publicStatus(organizationId, provider)),
+      ),
+      this.getLlmSpendStatus(organizationId),
+    ]);
     return {
-      ready: providers.some((item) => item.configured && item.status !== 'invalid'),
+      ready: providers.some(
+        (item) => item.configured && item.status !== 'invalid',
+      ),
       providers,
+      spend,
     };
   }
 
@@ -87,6 +175,7 @@ export class AiProviderService {
   ): Promise<{
     ready: boolean;
     providers: AiProviderPublicStatus[];
+    spend: LlmSpendStatus;
   }> {
     const key = this.encryptionKey();
     const apiKeyEncrypted = encryptSecret(apiKey.trim(), key);
@@ -121,6 +210,7 @@ export class AiProviderService {
     ready: boolean;
     ok: boolean;
     providers: AiProviderPublicStatus[];
+    spend: LlmSpendStatus;
   }> {
     let secret = apiKeyFromForm?.trim() ?? '';
     if (secret) {
@@ -274,16 +364,18 @@ export class AiProviderService {
                   },
                 )
               : await fetch('https://api.anthropic.com/v1/models', {
-                method: 'GET',
-                headers: {
-                  'x-api-key': apiKey,
-                  'anthropic-version': '2023-06-01',
-                },
-                signal: AbortSignal.timeout(8000),
-              });
+                  method: 'GET',
+                  headers: {
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                  },
+                  signal: AbortSignal.timeout(8000),
+                });
       if (res.ok) return true;
       const body = redactAiSecret(await res.text().catch(() => ''));
-      this.log.warn(`${provider} verify HTTP ${res.status}: ${body.slice(0, 180)}`);
+      this.log.warn(
+        `${provider} verify HTTP ${res.status}: ${body.slice(0, 180)}`,
+      );
       return false;
     } catch (err) {
       this.log.warn(

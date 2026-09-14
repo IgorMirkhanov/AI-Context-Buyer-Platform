@@ -340,7 +340,9 @@ type PipelineResult = {
     hasCreatives: boolean;
     criticalIssues: number;
     hasDraft: boolean;
+    draftPublishFailed?: boolean;
     hasLiveCampaign: boolean;
+    lastError?: string | null;
   };
 };
 
@@ -889,6 +891,27 @@ function ProjectPageInner() {
           ? err.message
           : "Не удалось запустить кампанию в кабинете",
       );
+      await load();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /** Retry after a persisted draft publish failure (confirm already given once). */
+  async function retryPublish() {
+    setError(null);
+    setPending(true);
+    try {
+      await api(`/projects/${params.id}/campaigns/publish`, { method: "POST" });
+      setConfirmPublish(false);
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось запустить кампанию в кабинете",
+      );
+      await load();
     } finally {
       setPending(false);
     }
@@ -1172,10 +1195,46 @@ function ProjectPageInner() {
   const readOnly = me?.canWrite === false;
   const branding = me?.branding ?? DEFAULT_BRANDING;
   const beginnerMode = me?.beginnerMode !== false;
+  // Source of truth for "live in ads": pipeline facts (same as hasLiveCampaign).
+  // MediaResult.publishedToAds is a stub (always false) — do not use it here.
+  const publishedToAds = Boolean(pipeline?.facts.hasLiveCampaign);
+  const draftPublishFailed = Boolean(pipeline?.facts.draftPublishFailed);
+  const publishFailReason =
+    pipeline?.facts.lastError?.trim() ||
+    pipeline?.blockedReason?.trim() ||
+    "неизвестная ошибка";
 
   function setBeginnerMode(value: boolean) {
     setMe((prev) => (prev ? { ...prev, beginnerMode: value } : prev));
   }
+
+  const publishStatusSubtitle = (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {publishedToAds ? (
+        <Badge kind="success">
+          Опубликовано в {platformTitle(project.primaryPlatform)}, на паузе
+        </Badge>
+      ) : draftPublishFailed ? (
+        <>
+          <Badge kind="danger">
+            Публикация не удалась: {publishFailReason}
+          </Badge>
+          {!readOnly ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pending || !connected}
+              onClick={() => void retryPublish()}
+            >
+              {pending ? "Публикуем…" : "Повторить публикацию"}
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        <Badge kind="draft">Не опубликовано</Badge>
+      )}
+    </span>
+  );
 
   return (
     <AppShell
@@ -1185,7 +1244,12 @@ function ProjectPageInner() {
       canWrite={me?.canWrite}
       project={{ id: project.id, name: project.name, status: project.status }}
       tab={tab}
-      subtitle={readOnly ? "только просмотр" : undefined}
+      subtitle={
+        <>
+          {readOnly ? "только просмотр · " : null}
+          {publishStatusSubtitle}
+        </>
+      }
       beginnerMode={beginnerMode}
       onBeginnerModeChange={setBeginnerMode}
       onLogout={() => router.replace("/login")}
