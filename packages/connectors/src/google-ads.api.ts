@@ -47,6 +47,16 @@ export interface GoogleAdsApi {
       status: "PAUSED";
     },
   ): Promise<string>;
+  setCampaignLocations(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+    geo: string[],
+  ): Promise<void>;
+  setCampaignLanguage(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+    geo: string[],
+  ): Promise<void>;
   pauseCampaign(auth: GoogleAdsAuth, campaignId: string): Promise<void>;
   updateBudgetMicros(
     auth: GoogleAdsAuth,
@@ -180,6 +190,41 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     return idFromResource(results[0]);
   }
 
+  async setCampaignLocations(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+    geo: string[],
+  ): Promise<void> {
+    const targets = googleGeoTargetConstants(geo);
+    if (targets.length === 0) return;
+    await this.mutate(
+      auth,
+      "campaignCriteria",
+      targets.map((geoTargetConstant) => ({
+        create: {
+          campaign: resource(auth.customerId, "campaigns", campaignId),
+          location: { geoTargetConstant },
+        },
+      })),
+    );
+  }
+
+  async setCampaignLanguage(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+    geo: string[],
+  ): Promise<void> {
+    const language = googleLanguageForGeo(geo);
+    await this.mutate(auth, "campaignCriteria", [
+      {
+        create: {
+          campaign: resource(auth.customerId, "campaigns", campaignId),
+          language: { languageConstant: language },
+        },
+      },
+    ]);
+  }
+
   async pauseCampaign(auth: GoogleAdsAuth, campaignId: string): Promise<void> {
     await this.mutate(auth, "campaigns", [
       {
@@ -261,11 +306,12 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     adGroupId: string,
     keywords: string[],
   ): Promise<void> {
-    if (keywords.length === 0) return;
+    const cleaned = sanitizeGoogleKeywords(keywords);
+    if (cleaned.length === 0) return;
     await this.mutate(
       auth,
       "adGroupCriteria",
-      keywords.map((text) => ({
+      cleaned.map((text) => ({
         create: {
           adGroup: resource(auth.customerId, "adGroups", adGroupId),
           keyword: { text, matchType: "PHRASE" },
@@ -614,6 +660,30 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
     return id;
   }
 
+  async setCampaignLocations(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+    geo: string[],
+  ): Promise<void> {
+    requireGoogleAuth(auth);
+    this.calls.push({
+      method: "setCampaignLocations",
+      payload: { campaignId, geo, targets: googleGeoTargetConstants(geo) },
+    });
+  }
+
+  async setCampaignLanguage(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+    geo: string[],
+  ): Promise<void> {
+    requireGoogleAuth(auth);
+    this.calls.push({
+      method: "setCampaignLanguage",
+      payload: { campaignId, language: googleLanguageForGeo(geo) },
+    });
+  }
+
   async pauseCampaign(auth: GoogleAdsAuth, campaignId: string): Promise<void> {
     requireGoogleAuth(auth);
     this.calls.push({ method: "pauseCampaign", payload: campaignId });
@@ -652,7 +722,10 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
     keywords: string[],
   ): Promise<void> {
     requireGoogleAuth(auth);
-    this.take("addKeywords", { adGroupId, keywords });
+    this.take("addKeywords", {
+      adGroupId,
+      keywords: sanitizeGoogleKeywords(keywords),
+    });
   }
 
   async addNegativeKeywords(
@@ -803,12 +876,48 @@ export function sanitizeNegativeKeywords(
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of negatives) {
-    const text = raw.trim().replace(/\s+/g, " ");
+    const text = sanitizeGoogleKeywordText(raw);
     if (!text) continue;
     const key = text.toLowerCase();
     if (exclude.has(key) || seen.has(key)) continue;
-    // Google Ads keyword text limit (80 chars).
-    if (text.length > 80) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+/**
+ * Drop characters Google Ads rejects (KEYWORD_HAS_INVALID_CHARS) and enforce
+ * text limits (80 chars / 10 words). Cyrillic letters and hyphens are kept.
+ */
+export function sanitizeGoogleKeywordText(raw: string): string | null {
+  let text = raw
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    // Disallowed symbols commonly triggering KEYWORD_HAS_INVALID_CHARS.
+    .replace(/[!@#%^*=+[\]{}<>?\\|/;:`~"«»„“”‘’()]/g, " ")
+    .replace(/[^\p{L}\p{N}\s+\-.'&]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+  const words = text.split(" ").filter(Boolean);
+  if (words.length > 10) {
+    text = words.slice(0, 10).join(" ");
+  }
+  if (text.length > 80) {
+    text = text.slice(0, 80).trim();
+  }
+  return text.length > 0 ? text : null;
+}
+
+export function sanitizeGoogleKeywords(keywords: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of keywords) {
+    const text = sanitizeGoogleKeywordText(raw);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
     seen.add(key);
     out.push(text);
   }

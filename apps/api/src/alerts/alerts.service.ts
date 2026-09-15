@@ -5,7 +5,11 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OpsAlertKind } from '@prisma/client';
+import {
+  AgentTaskStatus,
+  AgentType,
+  OpsAlertKind,
+} from '@prisma/client';
 import {
   evaluateOpsAlerts,
   OpsAlertDraft,
@@ -17,6 +21,15 @@ import { notifyAlertWebhook } from './alert-webhook';
 
 /** Не поднимать снова тот же scan-алерт сразу после «Понятно». */
 const SCAN_REOPEN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+const PIPELINE_AGENT_TYPES: AgentType[] = [
+  AgentType.analysis,
+  AgentType.semantic,
+  AgentType.campaign_plan,
+  AgentType.copywriting,
+  AgentType.validation,
+  AgentType.campaign_builder,
+];
 
 @Injectable()
 export class AlertsService implements OnModuleInit {
@@ -102,6 +115,30 @@ export class AlertsService implements OnModuleInit {
     });
   }
 
+  /**
+   * Drop open pipeline_failed banners once the latest pipeline agent task
+   * succeeded (or there is no failed latest task). Avoids "Campaign plan failed"
+   * sitting next to a green «Черновик готов» after a successful retry.
+   */
+  async clearStalePipelineFailures(projectId: string): Promise<void> {
+    const latestTask = await this.prisma.agentTask.findFirst({
+      where: { projectId, agentType: { in: PIPELINE_AGENT_TYPES } },
+      orderBy: { startedAt: 'desc' },
+      select: { status: true },
+    });
+    if (!latestTask || latestTask.status === AgentTaskStatus.failed) {
+      return;
+    }
+    await this.prisma.opsAlert.updateMany({
+      where: {
+        projectId,
+        kind: OpsAlertKind.pipeline_failed,
+        acknowledgedAt: null,
+      },
+      data: { acknowledgedAt: new Date() },
+    });
+  }
+
   async recordOauthRefreshFailure(organizationId: string, projectId: string) {
     await this.record(organizationId, projectId, {
       kind: 'oauth_expired',
@@ -126,6 +163,7 @@ export class AlertsService implements OnModuleInit {
 
   async scan(organizationId: string, projectId: string) {
     await this.requireProject(organizationId, projectId);
+    await this.clearStalePipelineFailures(projectId);
     const [credential, openRateLimit] = await Promise.all([
       this.prisma.adPlatformCredential.findFirst({
         where: { projectId },

@@ -249,6 +249,9 @@ export class GoogleAdsConnector implements AdPlatformConnector {
       budgetResource: budget,
       status: "PAUSED",
     });
+    const geo = draft.campaign.geo?.length ? draft.campaign.geo : ["RU"];
+    await this.api.setCampaignLocations(googleAuth, campaignId, geo);
+    await this.api.setCampaignLanguage(googleAuth, campaignId, geo);
     await this.api.pauseCampaign(googleAuth, campaignId);
     return campaignId;
   }
@@ -483,13 +486,17 @@ function toGoogleAuth(
 }
 
 function asDraft(value: unknown): {
-  campaign: { name: string; budget_daily: number };
+  campaign: { name: string; budget_daily: number; geo?: string[] };
 } {
-  const draft = value as { campaign?: { name?: string; budget_daily?: number } };
+  const draft = value as {
+    campaign?: { name?: string; budget_daily?: number; geo?: string[] };
+  };
   if (!draft.campaign?.name || !draft.campaign.budget_daily) {
     throw new Error("campaign draft is missing name or budget");
   }
-  return draft as { campaign: { name: string; budget_daily: number } };
+  return draft as {
+    campaign: { name: string; budget_daily: number; geo?: string[] };
+  };
 }
 
 function asCreative(value: unknown): {

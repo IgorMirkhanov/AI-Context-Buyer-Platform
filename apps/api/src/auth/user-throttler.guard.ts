@@ -5,6 +5,8 @@ import {
   InjectThrottlerOptions,
   InjectThrottlerStorage,
   ThrottlerGuard,
+} from '@nestjs/throttler';
+import type {
   ThrottlerModuleOptions,
   ThrottlerStorage,
 } from '@nestjs/throttler';

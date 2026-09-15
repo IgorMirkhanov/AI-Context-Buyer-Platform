@@ -81,6 +81,11 @@ type Props = {
     suggestionId: string,
     action: "accept" | "reject",
   ) => void;
+  onEditKeywords?: (
+    clusterId: string,
+    action: "add" | "remove",
+    phrases: string[],
+  ) => Promise<void> | void;
 };
 
 function commercialKeywords(
@@ -111,8 +116,13 @@ export function PlanReviewPanel({
   onRunPlan,
   onApprove,
   onResolveNegative,
+  onEditKeywords,
 }: Props) {
   const [showAllPhrases, setShowAllPhrases] = useState(false);
+  const [addDraftByCluster, setAddDraftByCluster] = useState<
+    Record<string, string>
+  >({});
+  const [editPending, setEditPending] = useState(false);
 
   const hasSemantic = Boolean(semantic && semantic.clusters.length > 0);
   const keywords = semantic ? commercialKeywords(semantic.clusters) : [];
@@ -235,8 +245,9 @@ export function PlanReviewPanel({
               </label>
             </div>
             <p className="mb-3 text-sm text-[var(--fg-muted)]">
-              Фразы сгруппированы по смыслу (кластеры). В запуск идут только
-              коммерческие — покупка, цена, заказ + гео.
+              Фразы сгруппированы по смыслу (кластеры). В черновик кампании
+              попадают все плюс-ключи кластера (не только коммерческие в таблице).
+              После правок пересоберите черновик на вкладке «Кампания».
             </p>
             {keywords.some((kw) => kw.source === "mock_wordstat") ||
             keywords.every(
@@ -250,9 +261,12 @@ export function PlanReviewPanel({
             ) : null}
             <div className="flex flex-col gap-3">
               {semantic!.clusters.map((cluster) => {
-                const rows = showAllPhrases
+                const rows = showAllPhrases || Boolean(onEditKeywords)
                   ? cluster.keywords
                   : cluster.keywords.filter((kw) => isKeywordCommercial(kw));
+                if (rows.length === 0 && cluster.keywords.length === 0) {
+                  return null;
+                }
                 if (rows.length === 0) return null;
                 return (
                   <article
@@ -274,6 +288,9 @@ export function PlanReviewPanel({
                             <th className="text-left">Фраза</th>
                             <th className="text-left">Интент</th>
                             <th className="text-right">Частота</th>
+                            {!readOnly && onEditKeywords ? (
+                              <th className="w-16 text-right"> </th>
+                            ) : null}
                           </tr>
                         </thead>
                         <tbody>
@@ -291,11 +308,76 @@ export function PlanReviewPanel({
                               <td className="text-right font-mono text-xs">
                                 {kw.frequency}
                               </td>
+                              {!readOnly && onEditKeywords ? (
+                                <td className="text-right">
+                                  <button
+                                    type="button"
+                                    className="text-xs text-[var(--status-danger-fg)] underline-offset-2 hover:underline"
+                                    disabled={pending || editPending}
+                                    onClick={() => {
+                                      setEditPending(true);
+                                      void Promise.resolve(
+                                        onEditKeywords(cluster.id, "remove", [
+                                          kw.phrase,
+                                        ]),
+                                      ).finally(() => setEditPending(false));
+                                    }}
+                                  >
+                                    убрать
+                                  </button>
+                                </td>
+                              ) : null}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                    {!readOnly && onEditKeywords ? (
+                      <form
+                        className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] px-3 py-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const raw = (addDraftByCluster[cluster.id] ?? "").trim();
+                          if (!raw) return;
+                          const phrases = raw
+                            .split(/[,;\n]+/)
+                            .map((item) => item.trim())
+                            .filter(Boolean);
+                          if (phrases.length === 0) return;
+                          setEditPending(true);
+                          void Promise.resolve(
+                            onEditKeywords(cluster.id, "add", phrases),
+                          )
+                            .then(() =>
+                              setAddDraftByCluster((prev) => ({
+                                ...prev,
+                                [cluster.id]: "",
+                              })),
+                            )
+                            .finally(() => setEditPending(false));
+                        }}
+                      >
+                        <input
+                          className="ui-input min-w-[12rem] flex-1 text-sm"
+                          placeholder="Добавить фразы через запятую"
+                          value={addDraftByCluster[cluster.id] ?? ""}
+                          disabled={pending || editPending}
+                          onChange={(event) =>
+                            setAddDraftByCluster((prev) => ({
+                              ...prev,
+                              [cluster.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          type="submit"
+                          className={btnClass("secondary")}
+                          disabled={pending || editPending}
+                        >
+                          Добавить
+                        </button>
+                      </form>
+                    ) : null}
                   </article>
                 );
               })}

@@ -696,6 +696,31 @@ function ProjectPageInner() {
     }
   }
 
+  async function editSemanticKeywords(
+    clusterId: string,
+    action: "add" | "remove",
+    phrases: string[],
+  ) {
+    setError(null);
+    try {
+      const next = await api<SemanticResult>(
+        `/projects/${params.id}/semantic/keywords`,
+        {
+          method: "POST",
+          body: JSON.stringify({ clusterId, action, phrases }),
+        },
+      );
+      setSemantic(next);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось изменить семантическое ядро",
+      );
+      throw err;
+    }
+  }
+
   async function runCampaignPlan() {
     setError(null);
     setPending(true);
@@ -2075,6 +2100,12 @@ function ProjectPageInner() {
           onRunPlan={runCampaignPlan}
           onApprove={approvePlanAndBuild}
           onResolveNegative={resolveNegativeSuggestion}
+          onEditKeywords={
+            readOnly
+              ? undefined
+              : (clusterId, action, phrases) =>
+                  editSemanticKeywords(clusterId, action, phrases)
+          }
         />
       </section>
       ) : null}
@@ -2280,16 +2311,21 @@ function ProjectPageInner() {
                   {unit.campaign.currency} · гео:{" "}
                   {unit.campaign.geo.join(", ")} · сайт: {unit.campaign.href}
                 </p>
-                {unit.ad_groups.map((group) => (
-                  <div key={group.name} className="mt-2 rounded border border-[var(--border)] p-2">
+                {unit.ad_groups.map((group, groupIndex) => (
+                  <div
+                    key={`${unit.campaign.name}-${group.name}-${groupIndex}`}
+                    className="mt-2 rounded border border-[var(--border)] p-2"
+                  >
                     <p className="font-medium">{group.name}</p>
                     <p className="text-xs text-[var(--fg-muted)]">
                       Ключи: {group.keywords.slice(0, 8).join(", ")}
                       {group.keywords.length > 8 ? "…" : ""}
                     </p>
                     <ul className="mt-1 list-disc pl-5">
-                      {group.ads.map((ad) => (
-                        <li key={`${group.name}-${ad.ab_group}`}>
+                      {group.ads.map((ad, adIndex) => (
+                        <li
+                          key={`${unit.campaign.name}-${group.name}-${ad.ab_group}-${adIndex}`}
+                        >
                           [{ad.ab_group}] {ad.headline1} / {ad.headline2} —{" "}
                           {ad.description}
                         </li>

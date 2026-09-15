@@ -354,6 +354,8 @@ export class PipelineService implements OnModuleInit {
 
     const facts = await this.loadFacts(projectId);
 
+    await this.alerts.clearStalePipelineFailures(projectId);
+
     return this.toDto(projectId, facts, planPipeline(facts));
 
   }

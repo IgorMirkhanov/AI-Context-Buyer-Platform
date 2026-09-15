@@ -74,6 +74,8 @@ export {
   isGoogleAdsAccessLevelError,
   formatGoogleAdsError,
   sanitizeNegativeKeywords,
+  sanitizeGoogleKeywordText,
+  sanitizeGoogleKeywords,
   mapGenerateKeywordIdeaResult,
   GOOGLE_ADS_API_VERSION,
 } from "./google-ads.api";

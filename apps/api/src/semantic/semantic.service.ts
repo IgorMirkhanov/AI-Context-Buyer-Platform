@@ -259,6 +259,88 @@ export class SemanticService {
     };
   }
 
+  /**
+   * Manual edit of cluster positives before rebuild/publish.
+   * Does not re-run LLM — only DB rows. Rebuild draft after edits.
+   */
+  async editKeywords(
+    organizationId: string,
+    projectId: string,
+    input: {
+      clusterId: string;
+      action: 'add' | 'remove';
+      phrases: string[];
+      intent?: 'hot' | 'warm' | 'navigational';
+    },
+  ) {
+    await this.requireProject(organizationId, projectId);
+    const cluster = await this.prisma.semanticCluster.findFirst({
+      where: { id: input.clusterId, projectId },
+    });
+    if (!cluster) {
+      throw new NotFoundException('Кластер не найден');
+    }
+    const phrases = [
+      ...new Set(
+        input.phrases
+          .map((item) => item.trim().replace(/\s+/g, ' '))
+          .filter((item) => item.length > 0),
+      ),
+    ];
+    if (phrases.length === 0) {
+      throw new BadRequestException('Укажите хотя бы одну фразу');
+    }
+
+    if (input.action === 'remove') {
+      const keys = phrases.map((item) => item.toLowerCase());
+      const rows = await this.prisma.semanticKeyword.findMany({
+        where: {
+          projectId,
+          clusterId: input.clusterId,
+          isNegative: false,
+        },
+      });
+      const ids = rows
+        .filter((row) => keys.includes(row.phrase.trim().toLowerCase()))
+        .map((row) => row.id);
+      if (ids.length > 0) {
+        await this.prisma.semanticKeyword.deleteMany({
+          where: { id: { in: ids } },
+        });
+      }
+      return this.getResult(organizationId, projectId);
+    }
+
+    const existing = await this.prisma.semanticKeyword.findMany({
+      where: {
+        projectId,
+        clusterId: input.clusterId,
+        isNegative: false,
+      },
+      select: { phrase: true },
+    });
+    const existingKeys = new Set(
+      existing.map((row) => row.phrase.trim().toLowerCase()),
+    );
+    const toCreate = phrases.filter(
+      (phrase) => !existingKeys.has(phrase.toLowerCase()),
+    );
+    if (toCreate.length > 0) {
+      await this.prisma.semanticKeyword.createMany({
+        data: toCreate.map((phrase) => ({
+          projectId,
+          clusterId: input.clusterId,
+          phrase,
+          frequency: 1,
+          intent: (input.intent as KeywordIntent | undefined) ?? KeywordIntent.warm,
+          isNegative: false,
+          source: 'manual_edit',
+        })),
+      });
+    }
+    return this.getResult(organizationId, projectId);
+  }
+
   async resolveNegativeSuggestion(
     organizationId: string,
     projectId: string,

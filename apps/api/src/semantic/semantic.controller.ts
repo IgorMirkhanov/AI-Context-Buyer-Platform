@@ -17,6 +17,7 @@ import { JwtPayload } from '../auth/jwt-payload';
 import { ProjectAccessGuard } from '../tenancy/project-access.guard';
 import { SemanticService } from './semantic.service';
 import { ResolveNegativeSuggestionDto } from './dto/resolve-negative-suggestion.dto';
+import { EditSemanticKeywordsDto } from './dto/edit-semantic-keywords.dto';
 
 @Controller('projects/:id/semantic')
 @UseGuards(JwtAuthGuard, ProjectAccessGuard)
@@ -38,6 +39,15 @@ export class SemanticController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.semantic.getResult(req.user.organizationId, id);
+  }
+
+  @Post('keywords')
+  editKeywords(
+    @Req() req: { user: JwtPayload },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: EditSemanticKeywordsDto,
+  ) {
+    return this.semantic.editKeywords(req.user.organizationId, id, body);
   }
 
   @Post('negative-suggestions/:suggestionId')

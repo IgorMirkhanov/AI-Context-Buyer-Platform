@@ -76,6 +76,40 @@ describe('AlertsService', () => {
     expect(db.opsAlert.create).not.toHaveBeenCalled();
   });
 
+  it('auto-acks pipeline_failed once the latest pipeline agent task succeeded', async () => {
+    db.agentTask.findFirst.mockResolvedValue({
+      agentType: AgentType.campaign_builder,
+      status: AgentTaskStatus.done,
+      error: null,
+    });
+    db.opsAlert.updateMany.mockResolvedValue({ count: 1 });
+    await service.list('org-a', 'p1');
+    expect(db.opsAlert.updateMany).toHaveBeenCalledWith({
+      where: {
+        projectId: 'p1',
+        kind: OpsAlertKind.pipeline_failed,
+        acknowledgedAt: null,
+      },
+      data: { acknowledgedAt: expect.any(Date) },
+    });
+  });
+
+  it('keeps pipeline_failed open while the latest pipeline agent task is failed', async () => {
+    db.agentTask.findFirst.mockResolvedValue({
+      agentType: AgentType.campaign_plan,
+      status: AgentTaskStatus.failed,
+      error: 'Campaign plan failed',
+    });
+    await service.list('org-a', 'p1');
+    expect(db.opsAlert.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          kind: OpsAlertKind.pipeline_failed,
+        }),
+      }),
+    );
+  });
+
   it('still records a live pipeline failure once', async () => {
     await service.recordPipelineFailure('org-a', 'p1', new Error('boom'));
     expect(db.opsAlert.create).toHaveBeenCalledWith({

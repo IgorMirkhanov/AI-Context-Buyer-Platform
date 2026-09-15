@@ -53,6 +53,14 @@ export function localizeApiError(message: string): string {
     );
   }
 
+  if (/KEYWORD_HAS_INVALID_CHARS|invalid characters or symbols/i.test(message)) {
+    return (
+      "Google Ads отклонил часть ключевых слов: в тексте есть запрещённые символы. " +
+      "При публикации API уже чистит фразы; пересоберите черновик и повторите. " +
+      "Если снова ошибка — уберите из семантики ключи со спецсимволами."
+    );
+  }
+
   if (/Request contains an invalid argument/i.test(message)) {
     if (/IMMUTABLE_FIELD|operations\.create\.negative/i.test(message)) {
       return (
