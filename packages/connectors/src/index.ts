@@ -82,6 +82,7 @@ export {
 export type { GoogleAdsApi, GoogleAdsAuth } from "./google-ads.api";
 export {
   googleGeoTargetConstants,
+  googleGeoTargetConstantsForKeywordIdeas,
   googleLanguageForGeo,
   GOOGLE_GEO_TARGET_IDS,
 } from "./google-geo";

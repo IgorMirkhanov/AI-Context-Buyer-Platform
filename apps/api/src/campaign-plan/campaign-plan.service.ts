@@ -70,12 +70,24 @@ export class CampaignPlanService {
 
     try {
       const payload = briefRow.payloadJson as ProjectBriefPayload;
-      const clusters = project.semanticClusters.map((cluster) => ({
+      const clustersRaw = project.semanticClusters.map((cluster) => ({
         name: cluster.name,
         category: cluster.category,
         keyword_count: cluster.keywords.length,
         sample_keywords: cluster.keywords.map((item) => item.phrase),
       }));
+      // Defense: duplicate cluster names (e.g. raced semantic persist) break plan validation.
+      const clusters = (() => {
+        const byName = new Map<string, (typeof clustersRaw)[number]>();
+        for (const cluster of clustersRaw) {
+          const key = cluster.name.trim().toLowerCase();
+          const prev = byName.get(key);
+          if (!prev || cluster.keyword_count > prev.keyword_count) {
+            byName.set(key, cluster);
+          }
+        }
+        return [...byName.values()];
+      })();
       const brief = {
         project_name: project.name,
         geo: payload.project.geo,

@@ -30,6 +30,9 @@ import { AiProviderModule } from './ai-provider/ai-provider.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // process.env (incl. stress MOCK flags) wins over .env file values
+      ignoreEnvFile: false,
+      expandVariables: false,
       envFilePath: [
         join(__dirname, '../../../../.env'),
         join(__dirname, '../../.env'),

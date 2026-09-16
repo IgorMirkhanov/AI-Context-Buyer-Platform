@@ -81,7 +81,7 @@ describe('Semantic Agent pipeline steps', () => {
     expect(groups.length).toBeGreaterThan(1);
   });
 
-  it('drops zero frequency and cross-minuses clusters', () => {
+  it('drops zero frequency and does not add cross-cluster minuses', () => {
     const core = finalizeStep(
       [
         {
@@ -105,7 +105,8 @@ describe('Semantic Agent pipeline steps', () => {
     expect(core.clusters[0].keywords.every((item) => item.frequency > 0)).toBe(
       true,
     );
-    expect(core.clusters[0].negative_keywords.length).toBeGreaterThan(0);
+    expect(core.clusters[0].negative_keywords).toEqual([]);
+    expect(core.clusters[1].negative_keywords).toEqual([]);
     expect(core.global_negatives).toContain('скачать');
   });
 

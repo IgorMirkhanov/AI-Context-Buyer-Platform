@@ -1,6 +1,7 @@
 import { KeywordIdea, PlatformApiError } from "./types";
 import {
   googleGeoTargetConstants,
+  googleGeoTargetConstantsForKeywordIdeas,
   googleLanguageForGeo,
 } from "./google-geo";
 import { defaultProjectApiLimiter, ProjectApiLimiter } from "./project-rate-limit";
@@ -87,6 +88,29 @@ export interface GoogleAdsApi {
     scope: { type: "campaign" | "ad_group"; id: string },
     negatives: string[],
     excludeTexts?: string[],
+  ): Promise<void>;
+  listAdGroupKeywords(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+  ): Promise<
+    Array<{
+      adGroupId: string;
+      criterionResourceName: string;
+      text: string;
+      negative: boolean;
+    }>
+  >;
+  listCampaignNegativeKeywords(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+  ): Promise<Array<{ criterionResourceName: string; text: string }>>;
+  removeAdGroupCriteria(
+    auth: GoogleAdsAuth,
+    resourceNames: string[],
+  ): Promise<void>;
+  removeCampaignCriteria(
+    auth: GoogleAdsAuth,
+    resourceNames: string[],
   ): Promise<void>;
   searchPerformance(
     auth: GoogleAdsAuth,
@@ -196,7 +220,13 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     geo: string[],
   ): Promise<void> {
     const targets = googleGeoTargetConstants(geo);
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      throw new PlatformApiError(
+        "Google Ads geo targeting is empty",
+        "setCampaignLocations",
+        `geo=${JSON.stringify(geo)}`,
+      );
+    }
     await this.mutate(
       auth,
       "campaignCriteria",
@@ -281,24 +311,44 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
       finalUrl: string;
     }>,
   ): Promise<string[]> {
-    const results = await this.mutate(
-      auth,
-      "adGroupAds",
-      ads.map((ad) => ({
-        create: {
-          adGroup: resource(auth.customerId, "adGroups", adGroupId),
-          status: "PAUSED",
-          ad: {
-            finalUrls: [ad.finalUrl],
-            responsiveSearchAd: {
-              headlines: ad.headlines.slice(0, 15).map((text) => ({ text })),
-              descriptions: ad.descriptions.slice(0, 4).map((text) => ({ text })),
+    // One mutate per RSA: Google rejects duplicate headline/description
+    // assets across operations in the same request (DUPLICATE_ASSET).
+    const ids: string[] = [];
+    for (const ad of ads) {
+      const headlines = uniquePreserveOrder(ad.headlines).slice(0, 15);
+      const descriptions = uniquePreserveOrder(ad.descriptions).slice(0, 4);
+      if (headlines.length < 3) {
+        throw new PlatformApiError(
+          "RSA needs at least 3 unique headlines",
+          "createAds",
+          `got ${headlines.length}`,
+        );
+      }
+      if (descriptions.length < 2) {
+        throw new PlatformApiError(
+          "RSA needs at least 2 unique descriptions",
+          "createAds",
+          `got ${descriptions.length}`,
+        );
+      }
+      const results = await this.mutate(auth, "adGroupAds", [
+        {
+          create: {
+            adGroup: resource(auth.customerId, "adGroups", adGroupId),
+            status: "PAUSED",
+            ad: {
+              finalUrls: [ad.finalUrl],
+              responsiveSearchAd: {
+                headlines: headlines.map((text) => ({ text })),
+                descriptions: descriptions.map((text) => ({ text })),
+              },
             },
           },
         },
-      })),
-    );
-    return results.map(idFromResource);
+      ]);
+      ids.push(idFromResource(results[0]));
+    }
+    return ids;
   }
 
   async addKeywords(
@@ -307,17 +357,33 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     keywords: string[],
   ): Promise<void> {
     const cleaned = sanitizeGoogleKeywords(keywords);
-    if (cleaned.length === 0) return;
-    await this.mutate(
-      auth,
-      "adGroupCriteria",
-      cleaned.map((text) => ({
-        create: {
-          adGroup: resource(auth.customerId, "adGroups", adGroupId),
-          keyword: { text, matchType: "PHRASE" },
-        },
-      })),
-    );
+    if (cleaned.length === 0) {
+      if (keywords.length > 0) {
+        throw new PlatformApiError(
+          "All keywords were rejected by Google Ads sanitizer",
+          "addKeywords",
+          `raw=${keywords.length}`,
+        );
+      }
+      return;
+    }
+    // Mutate in chunks — large batches are more likely to fail as a whole.
+    // partialFailure: skip duplicates when re-syncing keywords on republish.
+    const CHUNK = 50;
+    for (let i = 0; i < cleaned.length; i += CHUNK) {
+      const chunk = cleaned.slice(i, i + CHUNK);
+      await this.mutate(
+        auth,
+        "adGroupCriteria",
+        chunk.map((text) => ({
+          create: {
+            adGroup: resource(auth.customerId, "adGroups", adGroupId),
+            keyword: { text, matchType: "PHRASE" },
+          },
+        })),
+        { partialFailure: true, allowEmpty: true },
+      );
+    }
   }
 
   async addNegativeKeywords(
@@ -341,6 +407,7 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
             keyword: { text, matchType: "PHRASE" },
           },
         })),
+        { partialFailure: true, allowEmpty: true },
       );
       return;
     }
@@ -354,7 +421,101 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
           keyword: { text, matchType: "PHRASE" },
         },
       })),
+      { partialFailure: true, allowEmpty: true },
     );
+  }
+
+  async listAdGroupKeywords(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+  ): Promise<
+    Array<{
+      adGroupId: string;
+      criterionResourceName: string;
+      text: string;
+      negative: boolean;
+    }>
+  > {
+    const payload = await this.request<{
+      results?: Array<{
+        adGroup?: { id?: string };
+        adGroupCriterion?: {
+          resourceName?: string;
+          negative?: boolean;
+          keyword?: { text?: string };
+        };
+      }>;
+    }>(auth, `customers/${auth.customerId}/googleAds:search`, {
+      query: `SELECT ad_group.id, ad_group_criterion.resource_name, ad_group_criterion.negative, ad_group_criterion.keyword.text FROM ad_group_criterion WHERE campaign.id = ${campaignId} AND ad_group_criterion.type = 'KEYWORD'`,
+    });
+    return (payload.results ?? [])
+      .map((row) => ({
+        adGroupId: String(row.adGroup?.id ?? ""),
+        criterionResourceName: row.adGroupCriterion?.resourceName ?? "",
+        text: (row.adGroupCriterion?.keyword?.text ?? "")
+          .trim()
+          .toLowerCase(),
+        negative: Boolean(row.adGroupCriterion?.negative),
+      }))
+      .filter((row) => row.criterionResourceName && row.text);
+  }
+
+  async listCampaignNegativeKeywords(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+  ): Promise<Array<{ criterionResourceName: string; text: string }>> {
+    const payload = await this.request<{
+      results?: Array<{
+        campaignCriterion?: {
+          resourceName?: string;
+          keyword?: { text?: string };
+        };
+      }>;
+    }>(auth, `customers/${auth.customerId}/googleAds:search`, {
+      query: `SELECT campaign_criterion.resource_name, campaign_criterion.keyword.text FROM campaign_criterion WHERE campaign.id = ${campaignId} AND campaign_criterion.type = 'KEYWORD' AND campaign_criterion.negative = TRUE`,
+    });
+    return (payload.results ?? [])
+      .map((row) => ({
+        criterionResourceName: row.campaignCriterion?.resourceName ?? "",
+        text: (row.campaignCriterion?.keyword?.text ?? "")
+          .trim()
+          .toLowerCase(),
+      }))
+      .filter((row) => row.criterionResourceName && row.text);
+  }
+
+  async removeAdGroupCriteria(
+    auth: GoogleAdsAuth,
+    resourceNames: string[],
+  ): Promise<void> {
+    if (resourceNames.length === 0) return;
+    const CHUNK = 50;
+    for (let i = 0; i < resourceNames.length; i += CHUNK) {
+      const chunk = resourceNames.slice(i, i + CHUNK);
+      await this.mutate(
+        auth,
+        "adGroupCriteria",
+        chunk.map((resourceName) => ({ remove: resourceName })),
+        { partialFailure: true, allowEmpty: true },
+      );
+    }
+  }
+
+  async removeCampaignCriteria(
+    auth: GoogleAdsAuth,
+    resourceNames: string[],
+  ): Promise<void> {
+    if (resourceNames.length === 0) return;
+    const CHUNK = 50;
+    for (let i = 0; i < resourceNames.length; i += CHUNK) {
+      const chunk = resourceNames.slice(i, i + CHUNK);
+      await this.mutate(
+        auth,
+        "campaignCriteria",
+        chunk.map((resourceName) => ({ remove: resourceName })),
+        { partialFailure: true, allowEmpty: true },
+      );
+    }
   }
 
   async searchPerformance(
@@ -479,14 +640,20 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     if (seeds.length === 0) {
       return [];
     }
-    const geoTargets = googleGeoTargetConstants(geo);
+    // Prefer country-level geo: city constants often fail Keyword Planner
+    // with keywordPlanIdeaError=INVALID_VALUE while still OK for campaigns.
+    // Some accounts also reject RU country (Planner restrictions) — then retry
+    // with an empty geo list (all geos), which the API explicitly allows.
+    const geoAttempts: string[][] = [
+      googleGeoTargetConstantsForKeywordIdeas(geo),
+      [],
+    ];
     const language = googleLanguageForGeo(geo);
     const ideas: KeywordIdea[] = [];
     const seen = new Set<string>();
 
-    for (let i = 0; i < seeds.length; i += KEYWORD_SEED_CHUNK) {
-      const chunk = seeds.slice(i, i + KEYWORD_SEED_CHUNK);
-      const payload = await this.request<{
+    const fetchChunk = async (chunk: string[], targets: string[]) =>
+      this.request<{
         results?: Array<{
           text?: string;
           keywordIdeaMetrics?: {
@@ -496,11 +663,33 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
         }>;
       }>(auth, `customers/${auth.customerId}:generateKeywordIdeas`, {
         language,
-        geoTargetConstants: geoTargets,
+        geoTargetConstants: targets,
         includeAdultKeywords: false,
         keywordPlanNetwork: "GOOGLE_SEARCH",
         keywordSeed: { keywords: chunk },
       });
+
+    for (let i = 0; i < seeds.length; i += KEYWORD_SEED_CHUNK) {
+      const chunk = seeds.slice(i, i + KEYWORD_SEED_CHUNK);
+      let payload: Awaited<ReturnType<typeof fetchChunk>> | null = null;
+      let lastErr: unknown;
+      for (const targets of geoAttempts) {
+        try {
+          payload = await fetchChunk(chunk, targets);
+          break;
+        } catch (err) {
+          lastErr = err;
+          const details =
+            err instanceof PlatformApiError ? err.details ?? "" : "";
+          const message = err instanceof Error ? err.message : String(err);
+          const geoInvalid =
+            /geo_target_constants|keywordPlanIdeaError|INVALID_VALUE/i.test(
+              `${message} ${details}`,
+            );
+          if (!geoInvalid) throw err;
+        }
+      }
+      if (!payload) throw lastErr;
 
       for (const row of payload.results ?? []) {
         const mapped = mapGenerateKeywordIdeaResult(row);
@@ -534,14 +723,18 @@ export class LiveGoogleAdsApi implements GoogleAdsApi {
     auth: GoogleAdsAuth,
     service: string,
     operations: unknown[],
+    options?: { partialFailure?: boolean; allowEmpty?: boolean },
   ): Promise<string[]> {
     const payload = await this.request<{
       results?: GoogleAdsMutateResult[];
-    }>(auth, `customers/${auth.customerId}/${service}:mutate`, { operations });
+    }>(auth, `customers/${auth.customerId}/${service}:mutate`, {
+      operations,
+      ...(options?.partialFailure ? { partialFailure: true } : {}),
+    });
     const names = (payload.results ?? [])
       .map((item) => item.resourceName)
       .filter((item): item is string => Boolean(item));
-    if (names.length === 0) {
+    if (names.length === 0 && !options?.allowEmpty) {
       throw new PlatformApiError(
         "Google Ads mutate returned no resource names",
         service,
@@ -722,9 +915,17 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
     keywords: string[],
   ): Promise<void> {
     requireGoogleAuth(auth);
+    const cleaned = sanitizeGoogleKeywords(keywords);
+    if (cleaned.length === 0 && keywords.length > 0) {
+      throw new PlatformApiError(
+        "All keywords were rejected by Google Ads sanitizer",
+        "addKeywords",
+        `raw=${keywords.length}`,
+      );
+    }
     this.take("addKeywords", {
       adGroupId,
-      keywords: sanitizeGoogleKeywords(keywords),
+      keywords: cleaned,
     });
   }
 
@@ -740,6 +941,47 @@ export class MockGoogleAdsApi implements GoogleAdsApi {
       method: "addNegativeKeywords",
       payload: { scope, negatives: cleaned, excludeTexts },
     });
+  }
+
+  async listAdGroupKeywords(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+  ): Promise<
+    Array<{
+      adGroupId: string;
+      criterionResourceName: string;
+      text: string;
+      negative: boolean;
+    }>
+  > {
+    requireGoogleAuth(auth);
+    this.take("listAdGroupKeywords", { campaignId });
+    return [];
+  }
+
+  async listCampaignNegativeKeywords(
+    auth: GoogleAdsAuth,
+    campaignId: string,
+  ): Promise<Array<{ criterionResourceName: string; text: string }>> {
+    requireGoogleAuth(auth);
+    this.take("listCampaignNegativeKeywords", { campaignId });
+    return [];
+  }
+
+  async removeAdGroupCriteria(
+    auth: GoogleAdsAuth,
+    resourceNames: string[],
+  ): Promise<void> {
+    requireGoogleAuth(auth);
+    this.take("removeAdGroupCriteria", { resourceNames });
+  }
+
+  async removeCampaignCriteria(
+    auth: GoogleAdsAuth,
+    resourceNames: string[],
+  ): Promise<void> {
+    requireGoogleAuth(auth);
+    this.take("removeCampaignCriteria", { resourceNames });
   }
 
   async searchPerformance(
@@ -915,6 +1157,21 @@ export function sanitizeGoogleKeywords(keywords: string[]): string[] {
   const out: string[] = [];
   for (const raw of keywords) {
     const text = sanitizeGoogleKeywordText(raw);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+/** Case-insensitive unique, preserve first occurrence order. */
+export function uniquePreserveOrder(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const text = raw.replace(/\s+/g, " ").trim();
     if (!text) continue;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;

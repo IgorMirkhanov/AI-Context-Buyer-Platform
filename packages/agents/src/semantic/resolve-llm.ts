@@ -7,6 +7,7 @@ import {
   AgentLlmMode,
   pickAgentLlmProvider,
 } from "../llm/resolve-agent-llm";
+import { defaultSemanticModel } from "./semantic-defaults";
 
 export type SemanticLlmMode = AgentLlmMode;
 
@@ -42,7 +43,7 @@ export function resolveSemanticLlm(
     return {
       llm: new GeminiSemanticLlm({
         apiKey: picked.apiKey,
-        model: options.model,
+        model: options.model ?? defaultSemanticModel("gemini"),
         fetchImpl: options.fetchImpl,
       }),
       mode: "gemini",
@@ -52,7 +53,7 @@ export function resolveSemanticLlm(
     return {
       llm: new GroqSemanticLlm({
         apiKey: picked.apiKey,
-        model: options.model,
+        model: options.model ?? defaultSemanticModel("groq"),
         fetchImpl: options.fetchImpl,
       }),
       mode: "groq",
@@ -62,7 +63,7 @@ export function resolveSemanticLlm(
     return {
       llm: new AnthropicSemanticLlm({
         apiKey: picked.apiKey,
-        model: options.model,
+        model: options.model ?? defaultSemanticModel("anthropic"),
         fetchImpl: options.fetchImpl,
       }),
       mode: "anthropic",

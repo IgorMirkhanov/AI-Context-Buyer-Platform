@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -15,13 +16,16 @@ import {
   LiveCampaignStatus,
 } from '@prisma/client';
 import {
-  buildCampaignDraft,
   CampaignDraftStructure,
   CampaignDraftUnit,
   CampaignDraftValidationError,
   normalizeCampaignDraft,
   PublishCheckpoint,
+  sanitizeBriefNegatives,
+  sanitizeNegativesAgainstPositives,
+  selectPublishWorthyKeywords,
   validateCampaignDraft,
+  buildCampaignDraft,
 } from '@context-buyer/agents';
 import { CampaignPlan } from '@context-buyer/agents';
 import { PlatformApiError } from '@context-buyer/connectors';
@@ -38,6 +42,9 @@ import { OptimizationService } from '../optimization/optimization.service';
 
 @Injectable()
 export class CampaignsService {
+  /** Prevent concurrent publish from duplicating live campaigns. */
+  private readonly publishLocks = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -103,7 +110,15 @@ export class CampaignsService {
           geo: payload.project.geo,
           budgetDaily: payload.project.budget.daily,
           currency: payload.project.budget.currency,
-          global_negatives: payload.exclusions.global_negative_keywords,
+          global_negatives: sanitizeBriefNegatives(
+            payload.exclusions.global_negative_keywords,
+            {
+              usp: payload.marketing.usp ?? [],
+              product_description:
+                payload.marketing.product_description ?? '',
+              forbidden_phrases: payload.marketing.forbidden_phrases ?? [],
+            },
+          ),
           clusters: this.toClusters(clusters, creatives),
         },
         planRow.planJson as CampaignPlan,
@@ -222,6 +237,11 @@ export class CampaignsService {
    * повторный publish продолжает с последнего успешного шага.
    */
   async publish(organizationId: string, projectId: string, userId: string) {
+    if (this.publishLocks.has(projectId)) {
+      throw new ConflictException('Publish already in progress for this project');
+    }
+    this.publishLocks.add(projectId);
+    try {
     const project = await this.requireProject(organizationId, projectId);
     const draft = await this.prisma.campaignDraft.findFirst({
       where: { projectId },
@@ -304,7 +324,56 @@ export class CampaignsService {
               externalCampaignId: unit.publish.externalCampaignId,
             },
           });
-          if (existing) continue;
+          if (existing) {
+            let gained = false;
+            for (const group of unit.ad_groups) {
+              const before = group.keywords.length;
+              group.keywords = selectPublishWorthyKeywords(
+                group.keywords.map((phrase) => ({
+                  phrase,
+                  frequency: 1,
+                  source: 'manual_edit',
+                  intent: 'hot',
+                })),
+                { maxCount: 12, minCount: 2 },
+              );
+              group.negative_keywords = sanitizeNegativesAgainstPositives(
+                group.negative_keywords,
+                group.keywords,
+              );
+              if (group.keywords.length > before) gained = true;
+            }
+            structure.global_negatives = sanitizeNegativesAgainstPositives(
+              structure.global_negatives,
+              unit.ad_groups.flatMap((group) => group.keywords),
+            );
+            if (!gained) continue;
+            const checkpoint = unit.publish;
+            for (const group of checkpoint.adGroups ?? []) {
+              group.keywordsAdded = false;
+              group.negativesAdded = false;
+            }
+            checkpoint.step = 'addKeywords';
+            checkpoint.error = undefined;
+            structure.campaigns[unitIndex].publish = checkpoint;
+            await this.prisma.campaignDraft.update({
+              where: { id: draft.id },
+              data: { structureJson: structure as object },
+            });
+            await this.publishUnit(
+              draft.id,
+              structure,
+              unitIndex,
+              structure.campaigns[unitIndex],
+              connector,
+              auth,
+              write,
+              organizationId,
+              projectId,
+              project.primaryPlatform,
+            );
+            continue;
+          }
         }
         const externalCampaignId = await this.publishUnit(
           draft.id,
@@ -318,14 +387,30 @@ export class CampaignsService {
           projectId,
           project.primaryPlatform,
         );
-        await this.prisma.campaign.create({
-          data: {
+        await this.prisma.campaign.upsert({
+          where: {
+            projectId_externalCampaignId: {
+              projectId,
+              externalCampaignId,
+            },
+          },
+          create: {
             projectId,
             draftId: draft.id,
             externalCampaignId,
             platform: project.primaryPlatform,
             source: 'platform',
             status: LiveCampaignStatus.paused,
+            budget: unit.campaign.budget_daily,
+            targetingJson: {
+              geo: unit.campaign.geo,
+              initial_status: 'paused',
+              campaignName: unit.campaign.name,
+              draftUnitIndex: unitIndex,
+            },
+          },
+          update: {
+            draftId: draft.id,
             budget: unit.campaign.budget_daily,
             targetingJson: {
               geo: unit.campaign.geo,
@@ -358,6 +443,9 @@ export class CampaignsService {
         compensation:
           'Кампания (если успела создаться) оставлена на паузе. Повтор «Запустить» продолжит с последнего успешного шага, без дубля кампании.',
       });
+    }
+    } finally {
+      this.publishLocks.delete(projectId);
     }
   }
 
@@ -394,6 +482,35 @@ export class CampaignsService {
           { name: connectorDraft.campaign.name },
           () => connector.createCampaign(projectId, connectorDraft, auth),
         );
+        await this.saveCheckpoint(draftId, structure, checkpoint, unitIndex);
+      }
+
+      if (
+        checkpoint.externalCampaignId &&
+        !checkpoint.locationsSet &&
+        typeof connector.setCampaignGeo === 'function'
+      ) {
+        checkpoint.step = 'setLocations';
+        const geo =
+          connectorDraft.campaign.geo?.length > 0
+            ? connectorDraft.campaign.geo
+            : ['RU'];
+        await write(
+          AdWriteAction.create_campaign,
+          {
+            reason: 'set_locations',
+            externalCampaignId: checkpoint.externalCampaignId,
+            geo,
+          },
+          () =>
+            connector.setCampaignGeo!(
+              projectId,
+              checkpoint.externalCampaignId as string,
+              geo,
+              auth,
+            ),
+        );
+        checkpoint.locationsSet = true;
         await this.saveCheckpoint(draftId, structure, checkpoint, unitIndex);
       }
 
@@ -484,26 +601,22 @@ export class CampaignsService {
         }
         if (!state.negativesAdded) {
           checkpoint.step = 'addNegativeKeywords';
+          const safeNegatives = sanitizeNegativesAgainstPositives(
+            group.negative_keywords,
+            group.keywords,
+          );
           await write(
             AdWriteAction.add_negative_keywords,
             {
               scope: 'ad_group',
               adGroupId: state.externalId,
-              count: group.negative_keywords.length,
+              count: safeNegatives.length,
             },
             () =>
               connector.addNegativeKeywords(
                 projectId,
                 { type: 'ad_group', id: state.externalId },
-                group.negative_keywords.filter((phrase) => {
-                  const key = phrase.trim().toLowerCase();
-                  return (
-                    key.length > 0 &&
-                    !group.keywords.some(
-                      (kw) => kw.trim().toLowerCase() === key,
-                    )
-                  );
-                }),
+                safeNegatives,
                 auth,
               ),
           );
@@ -513,18 +626,22 @@ export class CampaignsService {
       }
 
       checkpoint.step = 'addNegativeKeywords';
+      const campaignNegatives = sanitizeNegativesAgainstPositives(
+        structure.global_negatives,
+        connectorDraft.ad_groups.flatMap((group) => group.keywords),
+      );
       await write(
         AdWriteAction.add_negative_keywords,
         {
           scope: 'campaign',
           externalCampaignId: checkpoint.externalCampaignId,
-          count: structure.global_negatives.length,
+          count: campaignNegatives.length,
         },
         () =>
           connector.addNegativeKeywords(
             projectId,
             { type: 'campaign', id: checkpoint.externalCampaignId },
-            structure.global_negatives,
+            campaignNegatives,
             auth,
           ),
       );
@@ -594,7 +711,12 @@ export class CampaignsService {
     clusters: Array<{
       id: string;
       name: string;
-      keywords: Array<{ phrase: string; isNegative: boolean }>;
+      keywords: Array<{
+        phrase: string;
+        isNegative: boolean;
+        frequency: number;
+        source: string;
+      }>;
     }>,
     creatives: Array<{
       id: string;
@@ -627,12 +749,13 @@ export class CampaignsService {
       }));
       return {
         name: cluster.name,
-        keywords: cluster.keywords
-          .filter((item) => !item.isNegative)
-          .map((item) => item.phrase),
-        negative_keywords: cluster.keywords
-          .filter((item) => item.isNegative)
-          .map((item) => item.phrase),
+        keywords: selectPublishKeywords(cluster.keywords),
+        negative_keywords: sanitizeNegativesAgainstPositives(
+          cluster.keywords
+            .filter((item) => item.isNegative)
+            .map((item) => item.phrase),
+          selectPublishKeywords(cluster.keywords),
+        ),
         ads,
       };
     });
@@ -647,6 +770,31 @@ export class CampaignsService {
     }
     return project;
   }
+}
+
+/**
+ * Publish only commercial / volume-backed phrases the user would target live.
+ * Cap per ad group; do not flood with template «купить/цена» spam.
+ */
+function selectPublishKeywords(
+  keywords: Array<{
+    phrase: string;
+    isNegative: boolean;
+    frequency: number;
+    source: string;
+    intent?: string;
+  }>,
+): string[] {
+  return selectPublishWorthyKeywords(
+    keywords.map((item) => ({
+      phrase: item.phrase,
+      isNegative: item.isNegative,
+      frequency: item.frequency,
+      source: item.source,
+      intent: item.intent as 'hot' | 'warm' | 'navigational' | undefined,
+    })),
+    { maxCount: 12, minCount: 2 },
+  );
 }
 
 function textOf(

@@ -1,19 +1,23 @@
 import {
   clusteringPartitionKey,
   dominantClusterPartition,
+  expandThinPublishKeywords,
   extraNegativesFromBrief,
   filterKeywordIdeas,
   filterNegativesAgainstCommercialCore,
   intentFromHeuristics,
   isCommercialKeyword,
   isPhraseOnNiche,
+  isPublishWorthyKeyword,
+  isSensibleSearchKeyword,
   mergeSuggestedNegativeWords,
+  nicheCoreTokens,
   noncommercialPlannerNegativeCandidates,
   normalizeNegativeSource,
+  padKeywordIdeasWithCommercialVariants,
   phraseClusteringCore,
   productFamilyFromPhrase,
   sanitizeBriefNegatives,
-  shouldCrossMinusPhrase,
 } from "./heuristics";
 import { HeuristicSemanticLlm, SemanticLlm } from "./llm";
 import {
@@ -73,7 +77,14 @@ export async function expandKeywordsStep(
   if (masks.length === 0) {
     return [];
   }
-  return getKeywordIdeas(masks, geo);
+  const ideas = await getKeywordIdeas(masks, geo);
+  const cleaned = ideas.filter((idea) => isSensibleSearchKeyword(idea.phrase));
+  // Live Keyword Planner is often thin for niche+city; pad lightly from
+  // sensible seeds only — never flood with template spam.
+  if (cleaned.length >= 12) {
+    return cleaned;
+  }
+  return padKeywordIdeasWithCommercialVariants(cleaned, masks, 8);
 }
 
 export function filterKeywordsStep(
@@ -88,8 +99,20 @@ export function filterKeywordsStep(
     ),
   };
   const negatives = generateNegativesStep(safeBrief);
-  return filterKeywordIdeas(ideas, negatives).filter((idea) =>
-    isPhraseOnNiche(idea.phrase, brief),
+  return filterKeywordIdeas(ideas, negatives)
+    .filter((idea) => isPhraseOnNiche(idea.phrase, brief))
+    .filter((idea) => {
+      const intent = intentFromHeuristics(idea.phrase);
+      return isCommercialKeyword(idea.phrase, intent ?? undefined);
+    });
+}
+
+/** Оставляем только коммерческие фразы после разметки intent. */
+export function filterCommercialKeywords(
+  keywords: SemanticKeyword[],
+): SemanticKeyword[] {
+  return keywords.filter((item) =>
+    isCommercialKeyword(item.phrase, item.intent),
   );
 }
 
@@ -133,6 +156,10 @@ export async function suggestNearIntentStep(
   brief: SemanticBriefInput,
   llm: SemanticLlm,
 ): Promise<KeywordIdea[]> {
+  // Keep Semantic Core dominated by real query volume; LLM fills gaps only.
+  if (ideas.length >= 15) {
+    return ideas;
+  }
   const wordstatPhrases = ideas.map((item) => item.phrase);
   const { phrases } = await llm.suggestNearIntentPhrases(brief, wordstatPhrases);
   if (phrases.length === 0) {
@@ -203,20 +230,20 @@ export function buildSuggestedNegativeWords(params: {
   const commercialPhrases = params.commercialKeywords
     .filter((item) => isCommercialKeyword(item.phrase, item.intent))
     .map((item) => item.phrase);
-  // USP / описание продукта — тоже коммерческое ядро (даже без «купить/цена»).
+  // USP / описание / все собранные фразы — коммерческое ядро (даже без «купить»).
   const protectedPhrases = [
     ...commercialPhrases,
+    ...params.commercialKeywords.map((item) => item.phrase),
     ...params.brief.usp,
     params.brief.product_description ?? "",
+    ...nicheCoreTokens(params.brief),
   ].filter(Boolean);
   const fromPlanner = noncommercialPlannerNegativeCandidates(
     params.plannerIdeas,
-    { alreadyBlocked: blocked },
+    { alreadyBlocked: blocked, brief: params.brief },
   );
-  const merged = mergeSuggestedNegativeWords(
-    fromPlanner,
-    params.llmSuggestions,
-  );
+  const fromLlm = params.llmSuggestions;
+  const merged = mergeSuggestedNegativeWords(fromPlanner, fromLlm);
   return filterNegativesAgainstCommercialCore(merged, protectedPhrases).slice(
     0,
     40,
@@ -333,28 +360,95 @@ export function finalizeStep(
     }))
     .filter((cluster) => cluster.keywords.length > 0);
 
-  const metas = cleaned.map((cluster) =>
-    dominantClusterPartition(cluster.keywords.map((item) => item.phrase)),
-  );
-
-  const withCross = cleaned.map((cluster, index) => {
-    const meta = metas[index];
-    const others = cleaned
-      .filter((_, i) => i !== index)
-      .flatMap((item) => item.keywords.map((kw) => kw.phrase));
-    const distinctive = others.filter((phrase) =>
-      shouldCrossMinusPhrase(meta.service, meta.family, phrase),
-    );
-    return {
-      ...cluster,
+  // Concurrent or heuristic naming can emit the same cluster_name twice;
+  // merge before cross-minus so campaign plan validation stays 1:1.
+  const mergedByName = new Map<string, (typeof cleaned)[number]>();
+  for (const cluster of cleaned) {
+    const key = cluster.cluster_name.trim().toLowerCase();
+    const prev = mergedByName.get(key);
+    if (!prev) {
+      mergedByName.set(key, cluster);
+      continue;
+    }
+    const phrases = new Set(prev.keywords.map((item) => item.phrase));
+    mergedByName.set(key, {
+      ...prev,
+      keywords: [
+        ...prev.keywords,
+        ...cluster.keywords.filter((item) => !phrases.has(item.phrase)),
+      ],
       negative_keywords: Array.from(
-        new Set([...cluster.negative_keywords, ...distinctive]),
-      ).slice(0, 40),
-    };
-  });
+        new Set([...prev.negative_keywords, ...cluster.negative_keywords]),
+      ),
+    });
+  }
+  const unique = [...mergedByName.values()]
+    .map((cluster) => {
+      // Drop junk / competitor / non-sensible rows before padding.
+      const quality = cluster.keywords.filter((item) =>
+        isPublishWorthyKeyword(item.phrase, {
+          frequency: item.frequency,
+          source: item.source,
+          intent: item.intent,
+        }),
+      );
+      const kept =
+        quality.length > 0
+          ? quality
+          : cluster.keywords.filter((item) =>
+              isSensibleSearchKeyword(item.phrase),
+            );
+      return { ...cluster, keywords: kept };
+    })
+    .filter((cluster) => cluster.keywords.length > 0)
+    // Prefer clusters with real Planner volume; keep a compact, reviewable set.
+    .sort((a, b) => {
+      const score = (c: typeof a) =>
+        c.keywords.reduce((sum, kw) => sum + (kw.frequency ?? 0), 0);
+      return score(b) - score(a);
+    })
+    .slice(0, 15)
+    .map((cluster) => {
+      // Hard-cap keywords inside each cluster for Plan UI / publish clarity.
+      const rankedKw = [...cluster.keywords].sort(
+        (a, b) => (b.frequency ?? 0) - (a.frequency ?? 0),
+      );
+      const capped = rankedKw.slice(0, 12);
+      if (capped.length >= 3) {
+        return { ...cluster, keywords: capped };
+      }
+      const expanded = expandThinPublishKeywords(
+        capped.map((item) => item.phrase),
+        2,
+        5,
+      );
+      const existing = new Set(
+        capped.map((item) => item.phrase.trim().toLowerCase()),
+      );
+      const intent = capped[0]?.intent ?? "hot";
+      const added = expanded
+        .filter((phrase) => !existing.has(phrase.trim().toLowerCase()))
+        .filter((phrase) =>
+          isPublishWorthyKeyword(phrase, {
+            frequency: 1,
+            source: "seed_expand_templates",
+            intent,
+          }),
+        )
+        .map((phrase) => ({
+          phrase,
+          intent,
+          frequency: 1,
+          source: "seed_expand_templates",
+        }));
+      return {
+        ...cluster,
+        keywords: [...capped, ...added].slice(0, 12),
+      };
+    });
 
   return {
-    clusters: withCross,
+    clusters: unique,
     global_negatives: globalNegatives,
   };
 }
@@ -438,9 +532,10 @@ export async function runSemanticPipeline(
   );
   const relabeled = filterKeywordsStep(withNearIntent, cleanedBrief);
   const labeled = await labelIntentStep(relabeled, wrapped);
+  const commercialKeywords = filterCommercialKeywords(labeled);
   const globalNegatives = generateNegativesStep(cleanedBrief);
   const clusters = await clusterStep(
-    labeled,
+    commercialKeywords,
     embeddings,
     wrapped,
     vectorIndex,
@@ -457,12 +552,12 @@ export async function runSemanticPipeline(
   validateSemanticCore(core);
   const llmNegatives = await suggestNegativeWordsStep(
     cleanedBrief,
-    labeled,
+    commercialKeywords,
     wrapped,
   );
   const suggested_negative_words = buildSuggestedNegativeWords({
     plannerIdeas: ideas,
-    commercialKeywords: labeled,
+    commercialKeywords,
     llmSuggestions: llmNegatives,
     brief: cleanedBrief,
   });

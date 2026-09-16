@@ -278,9 +278,23 @@ export class GoogleAdsConnector implements AdPlatformConnector {
     auth?: PlatformAuth,
   ): Promise<string[]> {
     this.requireProject(projectId);
-    const ads = creatives.map(asCreative).map((ad) => ({
-      headlines: padHeadlines(ad.headline1, ad.headline2),
-      descriptions: padDescriptions(ad.description, ad.headline2),
+    const usedHeadlines = new Set<string>();
+    const usedDescriptions = new Set<string>();
+    const ads = creatives.map(asCreative).map((ad, index) => ({
+      headlines: ensureMinUniqueAssets(
+        padHeadlines(ad.headline1, ad.headline2, index),
+        usedHeadlines,
+        3,
+        30,
+        ad.headline1 || "Оффер",
+      ),
+      descriptions: ensureMinUniqueAssets(
+        padDescriptions(ad.description, ad.headline2, index),
+        usedDescriptions,
+        2,
+        90,
+        ad.description || "Описание",
+      ),
       finalUrl: ad.href,
     }));
     return this.api.createResponsiveSearchAds(
@@ -304,6 +318,21 @@ export class GoogleAdsConnector implements AdPlatformConnector {
     );
   }
 
+  async setCampaignGeo(
+    projectId: string,
+    campaignId: string,
+    geo: string[],
+    auth?: PlatformAuth,
+  ): Promise<void> {
+    this.requireProject(projectId);
+    const targets = geo.length > 0 ? geo : ["RU"];
+    await this.api.setCampaignLocations(
+      toGoogleAuth(auth, projectId),
+      campaignId,
+      targets,
+    );
+  }
+
   async addNegativeKeywords(
     projectId: string,
     scope: unknown,
@@ -315,6 +344,8 @@ export class GoogleAdsConnector implements AdPlatformConnector {
       toGoogleAuth(auth, projectId),
       asScope(scope),
       negatives.map(asKeyword).filter(Boolean),
+      // Caller may pass positives as trailing strings via scope; connector
+      // layer keeps exclude empty — campaigns.service filters before call.
       [],
     );
   }
@@ -540,15 +571,127 @@ function asScope(value: unknown): { type: "campaign" | "ad_group"; id: string } 
   throw new Error("negative keyword scope is invalid");
 }
 
-function padHeadlines(h1: string, h2?: string): string[] {
-  const items = [h1.slice(0, 30), (h2 ?? h1).slice(0, 30), `${h1.slice(0, 22)} купить`.slice(0, 30)];
-  const unique = [...new Set(items.filter(Boolean))];
-  while (unique.length < 3) unique.push(`${h1.slice(0, 20)} ${unique.length + 1}`.slice(0, 30));
-  return unique;
+function padHeadlines(h1: string, h2?: string, variant = 0): string[] {
+  const base = h1.trim().slice(0, 30);
+  const second = (h2?.trim() || "").slice(0, 30);
+  const suffix = variant === 0 ? "купить" : variant === 1 ? "цена" : "заказать";
+  const candidates = [
+    base,
+    second && second.toLowerCase() !== base.toLowerCase() ? second : "",
+    `${base.slice(0, Math.max(1, 30 - suffix.length - 1))} ${suffix}`.slice(0, 30),
+    `${base.slice(0, 24)} ${variant + 1}`.slice(0, 30),
+    `Доставка — ${base}`.slice(0, 30),
+    `Официально — ${base}`.slice(0, 30),
+  ];
+  return uniqueAssetTexts(candidates, 3, 30, base || "Оффер");
 }
 
-function padDescriptions(description: string, extra?: string): string[] {
-  const first = description.slice(0, 90);
-  const second = (extra || description).slice(0, 90);
-  return second === first ? [first, `${first} Official store.`.slice(0, 90)] : [first, second];
+function padDescriptions(
+  description: string,
+  extra?: string,
+  variant = 0,
+): string[] {
+  const first = description.trim().slice(0, 90);
+  const secondRaw = (extra || "").trim().slice(0, 90);
+  const alt =
+    variant === 0
+      ? "Доставка и гарантия. Официальный магазин."
+      : variant === 1
+        ? "Подбор и консультация. Быстрый заказ."
+        : "Выгодные цены. Работаем с юрлицами.";
+  const candidates = [
+    first,
+    secondRaw && secondRaw.toLowerCase() !== first.toLowerCase()
+      ? secondRaw
+      : "",
+    `${first.slice(0, 60)} ${alt}`.slice(0, 90),
+    alt,
+  ];
+  return uniqueAssetTexts(candidates, 2, 90, first || alt);
+}
+
+/** Case-insensitive unique texts; pad to `min` with numbered suffixes. */
+function uniqueAssetTexts(
+  candidates: string[],
+  min: number,
+  maxLen: number,
+  seed: string,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of candidates) {
+    const text = raw.replace(/\s+/g, " ").trim().slice(0, maxLen);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  let n = out.length + 1;
+  while (out.length < min) {
+    const text = `${seed.slice(0, Math.max(1, maxLen - 4))} ${n}`.slice(
+      0,
+      maxLen,
+    );
+    const key = text.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(text);
+    }
+    n += 1;
+    if (n > 30) break;
+  }
+  return out;
+}
+
+/**
+ * Google Ads rejects the same headline/description text across RSA creates
+ * in one mutate (`DUPLICATE_ASSET`). Keep a batch-wide used set and pad to min.
+ */
+function ensureUniqueAssets(
+  texts: string[],
+  used: Set<string>,
+  maxLen: number,
+): string[] {
+  const out: string[] = [];
+  for (const raw of texts) {
+    let text = raw.replace(/\s+/g, " ").trim().slice(0, maxLen);
+    if (!text) continue;
+    let key = text.toLowerCase();
+    let attempt = 1;
+    while (used.has(key) && attempt < 20) {
+      const suffix = ` ${attempt}`;
+      text = `${raw.slice(0, Math.max(1, maxLen - suffix.length))}${suffix}`.slice(
+        0,
+        maxLen,
+      );
+      key = text.toLowerCase();
+      attempt += 1;
+    }
+    if (used.has(key)) continue;
+    used.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+function ensureMinUniqueAssets(
+  texts: string[],
+  used: Set<string>,
+  min: number,
+  maxLen: number,
+  seed: string,
+): string[] {
+  const out = ensureUniqueAssets(texts, used, maxLen);
+  let n = out.length + 1;
+  while (out.length < min && n < 40) {
+    const padded = ensureUniqueAssets(
+      [`${seed.trim().slice(0, Math.max(1, maxLen - 4))} ${n}`],
+      used,
+      maxLen,
+    );
+    out.push(...padded);
+    n += 1;
+  }
+  return out;
 }

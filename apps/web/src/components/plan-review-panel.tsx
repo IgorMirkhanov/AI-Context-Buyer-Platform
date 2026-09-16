@@ -118,13 +118,16 @@ export function PlanReviewPanel({
   onResolveNegative,
   onEditKeywords,
 }: Props) {
-  const [showAllPhrases, setShowAllPhrases] = useState(false);
+  const [showAllPhrases, setShowAllPhrases] = useState(true);
   const [addDraftByCluster, setAddDraftByCluster] = useState<
     Record<string, string>
   >({});
   const [editPending, setEditPending] = useState(false);
 
   const hasSemantic = Boolean(semantic && semantic.clusters.length > 0);
+  const allPhraseCount = semantic
+    ? semantic.clusters.reduce((sum, c) => sum + c.keywords.length, 0)
+    : 0;
   const keywords = semantic ? commercialKeywords(semantic.clusters) : [];
   const suggestions = semantic?.negativeSuggestions ?? [];
   const pendingNegatives = suggestions.filter((item) => item.status === "pending");
@@ -154,7 +157,7 @@ export function PlanReviewPanel({
           {semanticTask
             ? `Семантика: ${semanticTask.status}${semanticTask.error ? ` · ${semanticTask.error}` : ""}`
             : hasSemantic
-              ? `Собрано кластеров: ${semantic?.clusters.length ?? 0}`
+              ? `Собрано кластеров: ${semantic?.clusters.length ?? 0}${(semantic as { totals?: { clustersStored?: number } } | null)?.totals?.clustersStored && (semantic as { totals?: { clustersStored?: number } }).totals!.clustersStored! > (semantic?.clusters.length ?? 0) ? ` (показаны лучшие)` : ""}`
               : "Сначала соберите семантику — затем сформируйте структуру и утвердите план."}
           {campaignPlan?.task
             ? ` · план: ${campaignPlan.task.status}${campaignPlan.task.error ? ` · ${campaignPlan.task.error}` : ""}`
@@ -227,11 +230,14 @@ export function PlanReviewPanel({
           <section>
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <h3 className="font-medium">
-                <TermHint term="cluster">Семантическое ядро</TermHint>{" "}
+                <TermHint term="cluster">Ключевые слова</TermHint>{" "}
                 <span className="text-sm font-normal text-[var(--fg-muted)]">
                   · {semantic!.clusters.length} кластер
                   {semantic!.clusters.length === 1 ? "" : "а"} ·{" "}
-                  {keywords.length} коммерческих фраз
+                  {allPhraseCount} фраз
+                  {keywords.length !== allPhraseCount
+                    ? ` · ${keywords.length} коммерческих`
+                    : ""}
                 </span>
               </h3>
               <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-[var(--fg-muted)]">
@@ -245,9 +251,10 @@ export function PlanReviewPanel({
               </label>
             </div>
             <p className="mb-3 text-sm text-[var(--fg-muted)]">
-              Фразы сгруппированы по смыслу (кластеры). В черновик кампании
-              попадают все плюс-ключи кластера (не только коммерческие в таблице).
-              После правок пересоберите черновик на вкладке «Кампания».
+              Здесь правятся ключи <strong>до запуска кампании</strong>. Добавьте
+              или уберите фразы — черновик кампании пересоберётся сам и уйдёт в
+              Google Ads / Директ при публикации. Минус-слова — отдельным блоком
+              ниже.
             </p>
             {keywords.some((kw) => kw.source === "mock_wordstat") ||
             keywords.every(

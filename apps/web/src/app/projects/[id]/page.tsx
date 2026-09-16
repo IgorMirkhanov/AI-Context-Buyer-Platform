@@ -425,9 +425,26 @@ function ProjectPageInner() {
   const [oauthFlag, setOauthFlag] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [data, analysisData, sem, planData, ads, camp, rep, opt, attr, vis, pipe, notes, journal, llm, user, grants, ai] =
-      await Promise.all([
+    // Drop stale banners when switching projects / refreshing.
+    setError(null);
+    setReportError(null);
+    // Critical path first — avoid one heavy endpoint blocking shell/pipeline UI.
+    const [data, pipe, user, ai] = await Promise.all([
       api<ProjectDetails>(`/projects/${params.id}`),
+      api<PipelineResult>(`/projects/${params.id}/pipeline`).catch(() => null),
+      api<Me>("/auth/me"),
+      api<{ ready: boolean }>("/organization/ai-provider").catch(() => ({
+        ready: false,
+      })),
+    ]);
+    setProject(data);
+    setPipeline(pipe);
+    setMe(user);
+    setAiReady(ai.ready);
+    setLoadError(null);
+
+    const [analysisData, sem, planData, ads, camp, rep, opt, attr, vis, notes, journal, llm, grants] =
+      await Promise.all([
       api<AnalysisResult>(`/projects/${params.id}/analysis`).catch(() => null),
       api<SemanticResult>(`/projects/${params.id}/semantic`).catch(() => null),
       api<CampaignPlanResult>(`/projects/${params.id}/campaign-plan`).catch(
@@ -447,19 +464,13 @@ function ProjectPageInner() {
         () => null,
       ),
       api<MediaResult>(`/projects/${params.id}/media`).catch(() => null),
-      api<PipelineResult>(`/projects/${params.id}/pipeline`).catch(() => null),
       api<OpsAlertsResult>(`/projects/${params.id}/alerts`).catch(() => null),
       api<AuditResult>(`/projects/${params.id}/audit`).catch(() => null),
       api<LlmUsageResult>(`/projects/${params.id}/llm-usage`).catch(() => null),
-      api<Me>("/auth/me"),
       api<Array<{ userId: string; email: string; role: string }>>(
         `/projects/${params.id}/access`,
       ).catch(() => []),
-      api<{ ready: boolean }>("/organization/ai-provider").catch(() => ({
-        ready: false,
-      })),
     ]);
-    setProject(data);
     setAnalysis(analysisData);
     setSemantic(
       sem
@@ -476,14 +487,10 @@ function ProjectPageInner() {
     setOptimization(opt);
     setAttribution(attr);
     setMedia(vis);
-    setPipeline(pipe);
     setOpsAlerts(notes);
     setAuditLog(journal);
     setLlmUsage(llm);
-    setMe(user);
-    setAiReady(ai.ready);
     setClientAccess(grants);
-    setLoadError(null);
     const nextDrafts: Record<string, string> = {};
     for (const row of ads?.creatives ?? []) {
       nextDrafts[row.id] = row.text;
@@ -595,9 +602,14 @@ function ProjectPageInner() {
       setPipeline(data);
       await load();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Не удалось прогнать пайплайн",
-      );
+      const message =
+        err instanceof Error ? err.message : "Не удалось прогнать пайплайн";
+      // Human-gate copy must not look like a crash (e.g. draft already ready).
+      if (/черновик готов|уже в кабинете|кампания уже/i.test(message)) {
+        await load().catch(() => undefined);
+      } else {
+        setError(message);
+      }
     } finally {
       setPending(false);
     }
@@ -711,6 +723,11 @@ function ProjectPageInner() {
         },
       );
       setSemantic(next);
+      // Draft snapshots keywords — rebuild so publish sees edits.
+      if (campaigns?.draft && !readOnly) {
+        await api(`/projects/${params.id}/campaigns/draft`, { method: "POST" });
+        await load();
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -847,6 +864,10 @@ function ProjectPageInner() {
         body: JSON.stringify({ text }),
       });
       await load();
+      if (campaigns?.draft && !readOnly) {
+        await api(`/projects/${params.id}/campaigns/draft`, { method: "POST" });
+        await load();
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Не удалось сохранить объявление",
@@ -1220,10 +1241,23 @@ function ProjectPageInner() {
   const readOnly = me?.canWrite === false;
   const branding = me?.branding ?? DEFAULT_BRANDING;
   const beginnerMode = me?.beginnerMode !== false;
-  // Source of truth for "live in ads": pipeline facts (same as hasLiveCampaign).
-  // MediaResult.publishedToAds is a stub (always false) — do not use it here.
-  const publishedToAds = Boolean(pipeline?.facts.hasLiveCampaign);
-  const draftPublishFailed = Boolean(pipeline?.facts.draftPublishFailed);
+  // Prefer live campaign rows; pipeline facts can be null if /pipeline timed out.
+  const publishedToAds = Boolean(
+    pipeline?.facts.hasLiveCampaign ||
+      campaigns?.campaigns.some(
+        (item) => item.source === "platform" && Boolean(item.externalCampaignId),
+      ) ||
+      campaigns?.draft?.status === "published" ||
+      campaigns?.draft?.structureJson.campaigns.some(
+        (unit) =>
+          unit.publish?.step === "done" && Boolean(unit.publish.externalCampaignId),
+      ),
+  );
+  const draftPublishFailed = Boolean(
+    !publishedToAds &&
+      (pipeline?.facts.draftPublishFailed ||
+        campaigns?.draft?.status === "failed"),
+  );
   const publishFailReason =
     pipeline?.facts.lastError?.trim() ||
     pipeline?.blockedReason?.trim() ||
@@ -1310,6 +1344,13 @@ function ProjectPageInner() {
       {error ? (
         <Alert tone="danger" className="mb-4">
           {localizeApiError(error)}
+        </Alert>
+      ) : null}
+
+      {pipeline?.stage === "awaiting_approval" ? (
+        <Alert tone="success" className="mb-4" title="Черновик готов">
+          {pipeline.blockedReason ??
+            "Проверьте на вкладке «Кампании» или нажмите «Отменить и доработать»."}
         </Alert>
       ) : null}
 
@@ -2241,6 +2282,33 @@ function ProjectPageInner() {
       {tab === "campaign" ? (
       <section className="ui-panel relative mb-4 p-4">
         <h2 className="mb-2 font-medium">Кампания</h2>
+        <div
+          className={`mb-4 rounded-lg border px-3 py-2 text-sm ${
+            publishedToAds
+              ? "border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]"
+              : draftPublishFailed
+                ? "border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]"
+                : "border-[var(--border)] bg-[var(--bg-muted)] text-[var(--fg)]"
+          }`}
+          role="status"
+        >
+          {publishedToAds ? (
+            <p className="font-medium">
+              Кампания создана в {platformTitle(project.primaryPlatform)} и
+              стоит на паузе (показы выключены).
+            </p>
+          ) : draftPublishFailed ? (
+            <p className="font-medium">
+              Публикация не удалась: {publishFailReason}
+            </p>
+          ) : (
+            <p className="font-medium">
+              Черновик ещё не опубликован в кабинет. Проверьте семантику и
+              объявления на вкладках «План» / «Объявления», затем подтвердите
+              запуск ниже.
+            </p>
+          )}
+        </div>
         <div className="mb-4">
           <ProjectContextPanel
             websiteUrl={analyzedWebsiteUrl}
@@ -2318,8 +2386,24 @@ function ProjectPageInner() {
                   >
                     <p className="font-medium">{group.name}</p>
                     <p className="text-xs text-[var(--fg-muted)]">
-                      Ключи: {group.keywords.slice(0, 8).join(", ")}
-                      {group.keywords.length > 8 ? "…" : ""}
+                      Ключевые слова ({group.keywords.length}) — правки на вкладке
+                      «Семантика · План» до запуска
+                    </p>
+                    {group.keywords.length > 0 ? (
+                      <ul className="mt-1 list-disc pl-5 text-xs">
+                        {group.keywords.map((phrase) => (
+                          <li key={`${group.name}-${phrase}`}>{phrase}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-[var(--status-danger-fg)]">
+                        Пусто — добавьте фразы на вкладке «Семантика · План» и
+                        пересоберите черновик.
+                      </p>
+                    )}
+                    <p className="text-xs text-[var(--fg-muted)]">
+                      Объявлений: {group.ads.length} (A/B на кластер; правки —
+                      вкладка «Объявления»)
                     </p>
                     <ul className="mt-1 list-disc pl-5">
                       {group.ads.map((ad, adIndex) => (
@@ -2365,30 +2449,45 @@ function ProjectPageInner() {
               вы сами не активируете её в кабинете рекламной платформы.
               <BeginnerNote term="paused" className="mt-2" />
             </Alert>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={confirmPublish}
-                onChange={(event) => setConfirmPublish(event.target.checked)}
-              />
-              Создать кампанию в {platformTitle(project.primaryPlatform)} на
-              паузе (без показа). Подтверждаю запуск согласно{" "}
-              <Link href="/terms" className="underline" target="_blank">
-                условиям
-              </Link>
-            </label>
-            <button
-              className={btnClass("primary", "w-fit")}
-              onClick={publishCampaign}
-              disabled={pending || readOnly || !confirmPublish || !connected}
-            >
-              Запустить кампанию
-            </button>
-            {!connected ? (
-              <p className="text-xs text-[var(--fg-muted)]">
-                Сначала подключите кабинет {platformTitle(project.primaryPlatform)}.
-              </p>
-            ) : null}
+            {publishedToAds ? (
+              <Alert tone="success" title="Уже в кабинете">
+                Кампания уже создана на паузе. Повторный запуск не нужен —
+                смотрите блок «Опубликованные кампании» ниже или откройте Google
+                Ads.
+              </Alert>
+            ) : (
+              <>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={confirmPublish}
+                    onChange={(event) =>
+                      setConfirmPublish(event.target.checked)
+                    }
+                  />
+                  Создать кампанию в {platformTitle(project.primaryPlatform)} на
+                  паузе (без показа). Подтверждаю запуск согласно{" "}
+                  <Link href="/terms" className="underline" target="_blank">
+                    условиям
+                  </Link>
+                </label>
+                <button
+                  className={btnClass("primary", "w-fit")}
+                  onClick={publishCampaign}
+                  disabled={
+                    pending || readOnly || !confirmPublish || !connected
+                  }
+                >
+                  {pending ? "Публикуем…" : "Запустить кампанию"}
+                </button>
+                {!connected ? (
+                  <p className="text-xs text-[var(--fg-muted)]">
+                    Сначала подключите кабинет{" "}
+                    {platformTitle(project.primaryPlatform)}.
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         ) : (
           <EmptyState title="Сначала сгенерируйте объявления, затем соберите черновик">

@@ -159,6 +159,16 @@ export interface AdPlatformConnector {
     keywords: unknown[],
     auth?: PlatformAuth,
   ): Promise<void>;
+  /**
+   * Apply / re-apply campaign geo targeting. Google: CampaignCriterion LOCATION.
+   * Yandex embeds geo at create — may be a no-op.
+   */
+  setCampaignGeo?(
+    projectId: string,
+    campaignId: string,
+    geo: string[],
+    auth?: PlatformAuth,
+  ): Promise<void>;
   addNegativeKeywords(
     projectId: string,
     scope: unknown,

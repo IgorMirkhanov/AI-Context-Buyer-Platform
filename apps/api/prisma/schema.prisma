@@ -249,6 +249,7 @@ model SemanticCluster {
   creatives AdCreative[]
   mediaAssets MediaAsset[]
 
+  @@unique([projectId, name])
   @@index([projectId])
   @@map("semantic_clusters")
 }

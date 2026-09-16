@@ -14,6 +14,7 @@ export {
   expandKeywordsStep,
   extractMasksStep,
   filterKeywordsStep,
+  filterCommercialKeywords,
   generateNegativesStep,
   labelIntentStep,
   suggestNearIntentStep,
@@ -47,7 +48,7 @@ export {
   cosine,
 } from "./semantic/embeddings";
 export type { EmbeddingsClient, VectorIndex } from "./semantic/embeddings";
-export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword, isCommercialKeyword, combinedGeoCommercialMasks, geoLabelFromBriefCode, collapseConsecutiveDuplicateTokens, dropDuplicateBoundaryTrigger, cleanServiceMask, servicePhrasesFromLanding, COMMERCIAL_TRIGGERS, noncommercialPlannerNegativeCandidates, filterNegativesAgainstCommercialCore, mergeSuggestedNegativeWords, normalizeNegativeSource, tokenize, serviceTypeFromPhrase, productFamilyFromPhrase, clusteringPartitionKey, shouldCrossMinusPhrase, dominantClusterPartition, isPhraseOnNiche, nicheCoreTokens, isSafeNegativePhrase, sanitizeBriefNegatives } from "./semantic/heuristics";
+export { intentFromHeuristics, masksFromBrief, deriveMasksFromUsp, filterKeywordIdeas, phraseMatchesNegatives, phraseClusteringCore, isIntentTailKeyword, isCommercialKeyword, combinedGeoCommercialMasks, geoLabelFromBriefCode, collapseConsecutiveDuplicateTokens, dropDuplicateBoundaryTrigger, cleanServiceMask, servicePhrasesFromLanding, COMMERCIAL_TRIGGERS, noncommercialPlannerNegativeCandidates, filterNegativesAgainstCommercialCore, mergeSuggestedNegativeWords, normalizeNegativeSource, tokenize, serviceTypeFromPhrase, productFamilyFromPhrase, clusteringPartitionKey, shouldCrossMinusPhrase, dominantClusterPartition, isPhraseOnNiche, nicheCoreTokens, isSafeNegativePhrase, sanitizeBriefNegatives, padKeywordIdeasWithCommercialVariants, sanitizeNegativesAgainstPositives, expandThinPublishKeywords, naturalCommercialVariants, isSensibleSearchKeyword, isPublishWorthyKeyword, selectPublishWorthyKeywords } from "./semantic/heuristics";
 export type { ClusteringServiceType } from "./semantic/heuristics";
 export {
   compareSemanticQa,

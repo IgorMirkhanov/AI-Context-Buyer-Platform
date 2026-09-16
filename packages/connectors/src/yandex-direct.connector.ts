@@ -309,6 +309,16 @@ export class YandexDirectConnector implements AdPlatformConnector {
     );
   }
 
+  /** Geo is applied at campaign create for Yandex — nothing to re-apply. */
+  async setCampaignGeo(
+    projectId: string,
+    _campaignId: string,
+    _geo: string[],
+    _auth?: PlatformAuth,
+  ): Promise<void> {
+    this.requireProject(projectId);
+  }
+
   async addNegativeKeywords(
     projectId: string,
     scope: unknown,

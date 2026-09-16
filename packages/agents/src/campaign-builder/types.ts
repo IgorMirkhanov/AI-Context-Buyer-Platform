@@ -21,6 +21,7 @@ export type PublishCheckpoint = {
   step:
     | "idle"
     | "createCampaign"
+    | "setLocations"
     | "setBudget"
     | "createAdGroups"
     | "createAds"
@@ -28,6 +29,7 @@ export type PublishCheckpoint = {
     | "addNegativeKeywords"
     | "done";
   externalCampaignId?: string;
+  locationsSet?: boolean;
   adGroups?: Array<{
     name: string;
     externalId?: string;

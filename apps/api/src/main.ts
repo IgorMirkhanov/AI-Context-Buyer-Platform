@@ -21,7 +21,8 @@ function bootstrapEnv(): void {
   ];
   for (const envPath of candidates) {
     if (existsSync(envPath)) {
-      loadEnv({ path: envPath });
+      // Never clobber process env (stress/e2e force MOCK flags before spawn).
+      loadEnv({ path: envPath, override: false });
     }
   }
 }

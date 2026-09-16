@@ -30,6 +30,7 @@ const NEGATIVE_TOKEN_STOPWORDS = new Set([
   "мой",
   "наши",
   "алматы",
+  "almaty",
   "москва",
   "казахстан",
   "россия",
@@ -103,7 +104,7 @@ export const COMMERCIAL_TRIGGERS = [
   "наличие",
 ] as const;
 
-/** Обзорные/навигационные маркеры — не коммерческие, даже при warm/hot. */
+/** Обзорные/информационные маркеры — не коммерческие, даже при warm/hot. */
 const NON_COMMERCIAL_MARKERS = [
   ...NAV_MARKERS,
   "обзор",
@@ -113,6 +114,20 @@ const NON_COMMERCIAL_MARKERS = [
   "сравнен",
   "какой",
   "лучш",
+  "что такое",
+  "как сделать",
+  "своими руками",
+  "мастер класс",
+  "мастер-класс",
+  "скачать",
+  "бесплатно",
+  "ваканс",
+  "форум",
+  "видео",
+  "инструкция",
+  "урок",
+  "wiki",
+  "википед",
 ];
 
 const GEO_LABELS: Record<string, string> = {
@@ -324,8 +339,59 @@ export function nicheCoreTokens(brief: SemanticBriefInput): Set<string> {
       tokens.add(token);
     }
   }
+  const pet =
+    [...tokens].some((token) =>
+      /зоо|корм|животн|питомц|вет|кошк|собак|грызун/u.test(token),
+    ) || /зоо|корм|животн|питомц|ветаптек/u.test(blob);
+  if (pet) {
+    for (const token of PET_NICHE_CORE_TOKENS) {
+      tokens.add(token);
+    }
+  }
   return tokens;
 }
+
+/** Ядро зоониши — нельзя класть в минусы (должно жить в ключах). */
+const PET_NICHE_CORE_TOKENS = [
+  "зоомагазин",
+  "зоомагазина",
+  "зоомагазины",
+  "зоотовары",
+  "зоотовар",
+  "зоотоваров",
+  "корм",
+  "корма",
+  "кормом",
+  "кормами",
+  "кошки",
+  "кошек",
+  "кошка",
+  "собаки",
+  "собак",
+  "собака",
+  "животные",
+  "животных",
+  "питомцы",
+  "питомцев",
+  "грызуны",
+  "грызунов",
+  "ветаптека",
+  "ветаптеки",
+  "ветеринар",
+  "ветеринарный",
+  "ветеринарные",
+  "ветеринарных",
+  "влажный",
+  "влажного",
+  "сухой",
+  "сухого",
+  "доставка",
+  "доставкой",
+  "товары",
+  "товаров",
+  "магазин",
+  "магазина",
+] as const;
 
 /** Фраза по ниши брифа (отсев «гинекология москва», «шторы» и т.п.). */
 export function isPhraseOnNiche(
@@ -400,9 +466,12 @@ export function sanitizeBriefNegatives(
     global_negative_keywords: [],
     product_description: brief.product_description,
   })];
-  return negatives.filter((item) =>
-    isSafeNegativePhrase(item, [...protectedPhrases, ...extra]),
-  );
+  return negatives.filter((item) => {
+    const phrase = item.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!phrase) return false;
+    if (NEGATIVE_TOKEN_STOPWORDS.has(phrase)) return false;
+    return isSafeNegativePhrase(item, [...protectedPhrases, ...extra]);
+  });
 }
 
 /** УТП без маркетингового префикса → маска для Wordstat. */
@@ -739,6 +808,438 @@ export function filterKeywordIdeas(
   return filtered;
 }
 
+/**
+ * When Keyword Planner returns a thin set, pad with *natural* commercial
+ * variants. Avoid nonsense like «купить магазин …».
+ */
+export function padKeywordIdeasWithCommercialVariants(
+  ideas: KeywordIdea[],
+  seeds: string[],
+  minTotal = 8,
+): KeywordIdea[] {
+  // Only pad from sensible multi-word seeds — never from SKU junk.
+  const safeSeeds = seeds.filter(isSensibleSearchKeyword);
+  if (safeSeeds.length === 0 && ideas.length === 0) return ideas;
+
+  const seen = new Set(
+    ideas.map((item) => item.phrase.trim().toLowerCase().replace(/\s+/g, " ")),
+  );
+  const out: KeywordIdea[] = [...ideas];
+  const bases = [
+    ...safeSeeds.map((s) => s.trim().toLowerCase().replace(/\s+/g, " ")),
+    ...ideas
+      .filter((i) => isSensibleSearchKeyword(i.phrase))
+      .map((i) => i.phrase),
+  ].filter(Boolean);
+
+  for (const base of bases) {
+    if (out.length >= minTotal) break;
+    for (const phrase of naturalCommercialVariants(base)) {
+      if (out.length >= minTotal) break;
+      const key = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+      if (!key || seen.has(key) || !isSensibleSearchKeyword(key)) continue;
+      if (
+        !isPublishWorthyKeyword(key, {
+          frequency: 1,
+          source: "seed_expand_templates",
+          intent: "hot",
+        })
+      ) {
+        continue;
+      }
+      seen.add(key);
+      out.push({
+        phrase: key,
+        frequency: 1,
+        competition: null,
+        source: "seed_expand_templates",
+      });
+    }
+  }
+  return out;
+}
+
+const GEO_TOKEN_RE =
+  /(?:^|\s)(?:в\s+)?(алматы|алмата|астана|нур.?султан|москва|спб|питер|казахстан|россия|almaty)(?=\s|$)/gu;
+
+function stripGeoTokens(phrase: string): string {
+  return phrase
+    .replace(GEO_TOKEN_RE, " ")
+    .replace(/\s+/g, " ")
+    .replace(/(?:^|\s)в$/u, "")
+    .trim();
+}
+
+function hasGeoToken(phrase: string): boolean {
+  GEO_TOKEN_RE.lastIndex = 0;
+  return GEO_TOKEN_RE.test(phrase);
+}
+
+/** Nouns that must not get a leading «купить». */
+const PLACE_OR_CHANNEL =
+  /^(магазин|зоомагазин|зоомагазин[аы]?|интернет[\s-]?магазин|сайт|каталог|склад|аптека|ветаптека)(?:\s|$)/u;
+
+/** Already a price/commerce query — do not prepend «купить». */
+const PRICE_OR_COMMERCE_RE =
+  /(?:^|\s)(купить|заказать|записаться|стоимость|стоимости|цена|цены|цене|цену|недорого|доставка|доставкой|наличие|сколько\s+стоит|лучшие\s+цены)(?:\s|$)/u;
+
+/**
+ * Build short, speakable query variants from a seed phrase.
+ */
+export function naturalCommercialVariants(base: string): string[] {
+  const normalized = base.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalized) return [];
+  const core = stripGeoTokens(normalized) || normalized;
+  const hasGeo = hasGeoToken(normalized);
+  const hasTrigger =
+    seedHasCommercialTrigger(normalized) || seedHasCommercialTrigger(core);
+  const isPlace = PLACE_OR_CHANNEL.test(core);
+
+  const candidates: string[] = [normalized];
+  if (core !== normalized && isSensibleSearchKeyword(core)) {
+    candidates.push(core);
+  }
+
+  if (!hasTrigger && !isPlace) {
+    candidates.push(`купить ${core}`);
+    if (hasGeo) candidates.push(`купить ${normalized}`);
+    candidates.push(`${core} цена`);
+    candidates.push(`${core} заказать`);
+  }
+
+  if (isPlace) {
+    if (!/\bнедорого\b/u.test(core) && !/(?:^|\s)недорого(?:\s|$)/u.test(core)) {
+      candidates.push(`${core} недорого`);
+    }
+    if (hasGeo && !/(?:^|\s)недорого(?:\s|$)/u.test(normalized)) {
+      candidates.push(`${normalized} недорого`);
+    }
+  } else if (!hasTrigger && !/(?:^|\s)недорого(?:\s|$)/u.test(core)) {
+    candidates.push(`${core} недорого`);
+  }
+
+  if (!/доставк/u.test(core) && !isPlace && !hasTrigger) {
+    candidates.push(`${core} с доставкой`);
+  }
+
+  if (!hasGeo && core.split(" ").length <= 5) {
+    candidates.push(`${core} алматы`);
+  }
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of candidates) {
+    const key = raw.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!key || seen.has(key) || !isSensibleSearchKeyword(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+/** Reject template garbage that Google marks as low-volume / not serving. */
+export function isSensibleSearchKeyword(phrase: string): boolean {
+  const p = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!p) return false;
+  const words = p.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 7) return false;
+  if (p.length > 70) return false;
+  if (/(алматы\s+алматы|недорого\s+недорого|цена\s+цена)/u.test(p)) {
+    return false;
+  }
+  if (/(?:^|\s)алматы(?:\s+\S+){0,4}\s+алматы(?:\s|$)/u.test(p)) {
+    return false;
+  }
+  if (/купить\s+купить|заказать\s+заказать|заказ\s+заказать/u.test(p)) {
+    return false;
+  }
+  // Avoid JS `\b` — it is ASCII-only and breaks on Cyrillic tokens.
+  if (/^купить\s+(магазин|зоомагазин|сайт|каталог|склад)(?:\s|$)/u.test(p)) {
+    return false;
+  }
+  if (/^купить\s+(сколько|лучшие|цена|цены)(?:\s|$)/u.test(p)) return false;
+  if (/^заказать\s+(магазин|зоомагазин|сайт|сколько)(?:\s|$)/u.test(p)) {
+    return false;
+  }
+  if (/(?:^|\s)(официальный сайт|обзор|отзывы|ремонт)(?:\s|$)/u.test(p)) {
+    return false;
+  }
+  // Truncated geo leftovers: «… для животных в»
+  if (/(?:^|\s)(в|на|по|от|до|и|или)$/u.test(p)) return false;
+  // SKU / model junk: «креатив s8», «купить креатив 58»
+  if (words.some((w) => /^[a-z]?\d{1,4}$/u.test(w))) {
+    return false;
+  }
+  // Competitor / school brands leaking into agency semantics
+  if (COMPETITOR_LEAK_RE.test(p)) return false;
+  return true;
+}
+
+/** Education / agency competitors that must not become positive keywords. */
+const COMPETITOR_LEAK_RE =
+  /(?:^|\s)(skillbox|скилбокс|geekbrains|гикбрейнс|netology|нетология|otus|отус|html\s*academy|яндекс\s*практикум|yandex\s*practicum|genius\s*marketing)(?:\s|$)/iu;
+
+const SYNTHETIC_SOURCES = new Set([
+  "seed_expand_templates",
+  "llm_seed_expand",
+  "llm_near_intent",
+  "manual_edit",
+]);
+
+const REAL_VOLUME_SOURCES = new Set([
+  "google_keyword_planner",
+  "mock_wordstat",
+  "yandex_wordstat",
+]);
+
+/**
+ * Keep only phrases that look like real commercial search demand.
+ * Prefer Planner volume; drop synthetic template spam and competitor leaks.
+ */
+export function isPublishWorthyKeyword(
+  phrase: string,
+  opts?: {
+    frequency?: number;
+    source?: string;
+    intent?: KeywordIntent;
+  },
+): boolean {
+  const p = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!isSensibleSearchKeyword(p)) return false;
+  if (COMPETITOR_LEAK_RE.test(p)) return false;
+  const intent = opts?.intent;
+  if (intent === "navigational" || intent === "warm") return false;
+  // Token match — avoid «сайт» hitting «сайтов».
+  const tokens = p.split(/\s+/).filter(Boolean);
+  if (
+    tokens.some(
+      (token) =>
+        token === "сайт" ||
+        token === "бренд" ||
+        token === "логотип" ||
+        token === "это" ||
+        NON_COMMERCIAL_MARKERS.some(
+          (marker) => marker.includes(" ") && p.includes(marker),
+        ),
+    )
+  ) {
+    return false;
+  }
+  if (tokens.some((token) => /^[a-z]?\d{1,4}$/u.test(token))) {
+    return false;
+  }
+
+  const freq = opts?.frequency ?? 0;
+  const source = (opts?.source ?? "").toLowerCase();
+  const isSynthetic =
+    SYNTHETIC_SOURCES.has(source) || source.startsWith("llm_");
+  const isRealVolume =
+    REAL_VOLUME_SOURCES.has(source) ||
+    source.includes("planner") ||
+    source.includes("wordstat");
+
+  // Real Planner rows with volume — keep commercial or solid multi-word niche.
+  if (isRealVolume && freq > 1) {
+    return (
+      isCommercialKeyword(p, intent) ||
+      (tokens.length >= 3 && !/^[a-z0-9\s]+$/u.test(p))
+    );
+  }
+
+  // Synthetic templates only if clearly commercial with real content words.
+  if (isSynthetic || freq <= 1) {
+    if (!isCommercialKeyword(p, intent ?? "hot")) return false;
+    const content = tokens.filter(
+      (w) =>
+        !COMMERCIAL_TRIGGERS.includes(w as (typeof COMMERCIAL_TRIGGERS)[number]) &&
+        !NEGATIVE_TOKEN_STOPWORDS.has(w) &&
+        w !== "недорого" &&
+        !/^[a-z]?\d{1,4}$/u.test(w),
+    );
+    return content.length >= 2;
+  }
+
+  return isCommercialKeyword(p, intent);
+}
+
+/**
+ * Rank and cap keywords for an ad group before Google publish / draft UI.
+ * Uses real search volume when present; does not flood with template variants.
+ */
+export function selectPublishWorthyKeywords(
+  keywords: Array<{
+    phrase: string;
+    isNegative?: boolean;
+    frequency?: number;
+    source?: string;
+    intent?: KeywordIntent;
+  }>,
+  opts?: { maxCount?: number; minCount?: number },
+): string[] {
+  const maxCount = opts?.maxCount ?? 12;
+  const minCount = opts?.minCount ?? 2;
+  const positives = keywords.filter((item) => !item.isNegative);
+  const ranked = [...positives].sort((a, b) => {
+    const aReal = REAL_VOLUME_SOURCES.has((a.source ?? "").toLowerCase())
+      ? 1
+      : 0;
+    const bReal = REAL_VOLUME_SOURCES.has((b.source ?? "").toLowerCase())
+      ? 1
+      : 0;
+    if (bReal !== aReal) return bReal - aReal;
+    const freqDiff = (b.frequency ?? 0) - (a.frequency ?? 0);
+    if (freqDiff !== 0) return freqDiff;
+    return a.phrase.localeCompare(b.phrase, "ru");
+  });
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  const tryPush = (
+    item: (typeof ranked)[number],
+    allowSynthetic: boolean,
+  ): boolean => {
+    const key = item.phrase.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!key || seen.has(key)) return false;
+    const source = (item.source ?? "").toLowerCase();
+    const isSynthetic =
+      SYNTHETIC_SOURCES.has(source) || source.startsWith("llm_");
+    if (isSynthetic && !allowSynthetic) return false;
+    if (
+      !isPublishWorthyKeyword(key, {
+        frequency: item.frequency,
+        source: item.source,
+        intent: item.intent,
+      })
+    ) {
+      return false;
+    }
+    seen.add(key);
+    out.push(item.phrase.trim());
+    return true;
+  };
+
+  // Pass 1: real Planner / Wordstat volume only.
+  for (const item of ranked) {
+    if (out.length >= maxCount) break;
+    tryPush(item, false);
+  }
+  // Pass 2: allow a few commercial synthetics only if still thin.
+  if (out.length < minCount) {
+    for (const item of ranked) {
+      if (out.length >= maxCount) break;
+      tryPush(item, true);
+    }
+  }
+
+  // Pad lightly only when the group is still empty of commercial cores.
+  if (out.length < minCount && out.length > 0) {
+    return expandThinPublishKeywords(out, minCount, Math.min(6, maxCount));
+  }
+  if (out.length === 0) {
+    const fallback = ranked
+      .map((item) => item.phrase.trim())
+      .filter((phrase) => isSensibleSearchKeyword(phrase));
+    return expandThinPublishKeywords(fallback.slice(0, 3), minCount, 5);
+  }
+  return out;
+}
+
+/** Same commercial triggers as connectors seedHasCommercialModifier (local copy). */
+function seedHasCommercialTrigger(seed: string): boolean {
+  const p = seed.toLowerCase().replace(/\s+/g, " ");
+  if (PRICE_OR_COMMERCE_RE.test(p)) return true;
+  const tokens = p.split(/\s+/).filter(Boolean);
+  return COMMERCIAL_TRIGGERS.some((trigger) => {
+    if (tokens[0] === trigger) return true;
+    if (tokens[tokens.length - 1] === trigger) return true;
+    return tokens.includes(trigger);
+  });
+}
+
+/**
+ * Drop negatives that would block any of the given positive phrases
+ * (token or phrase match). Also drops bare geo/stop tokens.
+ */
+export function sanitizeNegativesAgainstPositives(
+  negatives: string[],
+  positives: string[],
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const positiveTokens = new Set(positives.flatMap((pos) => tokenize(pos)));
+  for (const raw of negatives) {
+    const phrase = raw.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!phrase || seen.has(phrase)) continue;
+    if (NEGATIVE_TOKEN_STOPWORDS.has(phrase)) continue;
+    if (HOT_MARKERS.includes(phrase)) continue;
+    if (PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(phrase)) continue;
+    if (positives.some((pos) => phraseMatchesNegatives(pos, [phrase]))) {
+      continue;
+    }
+    // «магазин» must not survive next to «зоомагазин …»
+    if (phrase.length >= 4) {
+      const hitsCore = [...positiveTokens].some(
+        (token) => token.includes(phrase) || phrase.includes(token),
+      );
+      if (hitsCore) continue;
+    }
+    seen.add(phrase);
+    out.push(raw.trim());
+  }
+  return out;
+}
+
+/**
+ * Expand a thin positive keyword list for campaign publish.
+ * Keep sensible originals; pad lightly (max 6) — never flood with templates.
+ */
+export function expandThinPublishKeywords(
+  phrases: string[],
+  minCount = 2,
+  maxCount = 12,
+): string[] {
+  const seeds = phrases
+    .map((p) => p.trim().toLowerCase().replace(/\s+/g, " "))
+    .filter(Boolean);
+  const sensibleSeeds = seeds.filter(isSensibleSearchKeyword);
+  const base = sensibleSeeds.length > 0 ? sensibleSeeds : seeds;
+  const hardCap = Math.min(maxCount, 12);
+  if (base.length >= minCount) {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const key of base) {
+      if (!key || seen.has(key)) continue;
+      if (!isSensibleSearchKeyword(key)) continue;
+      seen.add(key);
+      out.push(key);
+      if (out.length >= hardCap) break;
+    }
+    return out.length > 0 ? out : base.slice(0, hardCap);
+  }
+  const ideas = padKeywordIdeasWithCommercialVariants(
+    base.map((phrase) => ({
+      phrase,
+      frequency: 1,
+      competition: null,
+      source: "manual_edit",
+    })),
+    base,
+    Math.max(minCount, base.length),
+  );
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of ideas) {
+    const key = item.phrase.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!key || seen.has(key)) continue;
+    if (!isSensibleSearchKeyword(key) && !base.includes(key)) continue;
+    seen.add(key);
+    out.push(key);
+    if (out.length >= hardCap) break;
+  }
+  return out;
+}
+
 export function extraNegativesFromBrief(brief: SemanticBriefInput): string[] {
   const extras: string[] = [];
   if ((brief.price_segment ?? "").toLowerCase() === "premium") {
@@ -768,7 +1269,7 @@ const PLANNER_IDEA_SOURCES = new Set([
  */
 export function noncommercialPlannerNegativeCandidates(
   ideas: KeywordIdea[],
-  options?: { alreadyBlocked?: string[] },
+  options?: { alreadyBlocked?: string[]; brief?: SemanticBriefInput },
 ): SuggestedNegativeWord[] {
   const planner = ideas.filter(
     (idea) => PLANNER_IDEA_SOURCES.has(idea.source) && idea.frequency > 0,
@@ -776,9 +1277,14 @@ export function noncommercialPlannerNegativeCandidates(
   const commercial = planner.filter((idea) =>
     isCommercialKeyword(idea.phrase),
   );
-  const noncommercial = planner.filter(
-    (idea) => !isCommercialKeyword(idea.phrase),
-  );
+  const noncommercial = planner.filter((idea) => {
+    if (isCommercialKeyword(idea.phrase)) return false;
+    // Only informational queries from the same niche sphere as the brief.
+    if (options?.brief && !isPhraseOnNiche(idea.phrase, options.brief)) {
+      return false;
+    }
+    return true;
+  });
   const commercialTokens = new Set(
     commercial.flatMap((idea) => tokenize(idea.phrase)),
   );
@@ -904,6 +1410,9 @@ export function filterNegativesAgainstCommercialCore(
     if (PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(phrase)) {
       return false;
     }
+    if ([...PET_NICHE_CORE_TOKENS].includes(phrase as (typeof PET_NICHE_CORE_TOKENS)[number])) {
+      return false;
+    }
     const tokens = tokenize(phrase);
     if (tokens.length === 0) {
       return phrase.length >= 2 && !coreTokens.has(phrase);
@@ -912,7 +1421,23 @@ export function filterNegativesAgainstCommercialCore(
     if (tokens.some((token) => coreTokens.has(token))) {
       return false;
     }
+    // Stem/substring: «зоомагазины» рядом с «зоомагазин»
+    if (
+      phrase.length >= 4 &&
+      [...coreTokens].some(
+        (token) => token.includes(phrase) || phrase.includes(token),
+      )
+    ) {
+      return false;
+    }
     if (tokens.some((token) => PRODUCT_OR_SERVICE_NEGATIVE_BLOCK.has(token))) {
+      return false;
+    }
+    if (
+      tokens.some((token) =>
+        (PET_NICHE_CORE_TOKENS as readonly string[]).includes(token),
+      )
+    ) {
       return false;
     }
     return true;

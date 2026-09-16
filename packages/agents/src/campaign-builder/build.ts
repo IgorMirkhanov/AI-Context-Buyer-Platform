@@ -1,4 +1,5 @@
 import type { CampaignPlan } from "../campaign-plan/types";
+import { sanitizeNegativesAgainstPositives } from "../semantic/heuristics";
 import {
   CampaignBuilderInput,
   CampaignDraftStructure,
@@ -72,10 +73,13 @@ function buildAdGroupFromClusters(
   if (matched.length === 1) {
     return clusterToAdGroup(matched[0], href, group.name);
   }
-  const keywords = unique(matched.flatMap((item) => item.keywords));
+  const keywords = unique(matched.flatMap((item) => item.keywords)).slice(
+    0,
+    12,
+  );
   const negative_keywords = unique(
     matched.flatMap((item) => item.negative_keywords),
-  );
+  ).slice(0, 40);
   const ads = matched.flatMap((item) => item.ads);
   if (keywords.length === 0 || ads.length === 0) {
     throw new Error(`Ad group "${group.name}" has no keywords or ads`);
@@ -132,12 +136,19 @@ export function buildCampaignDraft(
     campaigns,
     global_negatives: unique(input.global_negatives),
   };
+  const allPositives = draft.campaigns.flatMap((unit) =>
+    unit.ad_groups.flatMap((group) => group.keywords),
+  );
+  draft.global_negatives = sanitizeNegativesAgainstPositives(
+    draft.global_negatives,
+    allPositives,
+  );
   for (const unit of draft.campaigns) {
     for (const group of unit.ad_groups) {
-      group.negative_keywords = unique([
-        ...group.negative_keywords,
-        ...draft.global_negatives,
-      ]);
+      group.negative_keywords = sanitizeNegativesAgainstPositives(
+        unique([...group.negative_keywords, ...draft.global_negatives]),
+        group.keywords,
+      );
     }
   }
   validateCampaignDraft(draft);

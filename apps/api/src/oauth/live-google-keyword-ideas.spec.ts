@@ -135,8 +135,81 @@ describe('LiveGoogleKeywordIdeasProvider', () => {
       language: string;
     };
     expect(body.keywordSeed.keywords).toEqual(['ноутбук asus']);
-    expect(body.geoTargetConstants).toEqual(['geoTargetConstants/1024443']);
+    // Keyword Planner uses country-level geo (city IDs often INVALID_VALUE).
+    expect(body.geoTargetConstants).toEqual(['geoTargetConstants/2643']);
     expect(body.language).toBe('languageConstants/1031');
+  });
+
+  it('retries Keyword Planner with empty geo after country INVALID_VALUE', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: {
+            message: 'Request contains an invalid argument.',
+            status: 'INVALID_ARGUMENT',
+            details: [
+              {
+                errors: [
+                  {
+                    errorCode: { keywordPlanIdeaError: 'INVALID_VALUE' },
+                    message: 'The input has an invalid value.',
+                    location: {
+                      fieldPathElements: [{ fieldName: 'geo_target_constants' }],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            {
+              text: 'купить ноутбук',
+              keywordIdeaMetrics: {
+                avgMonthlySearches: '100',
+                competition: 'LOW',
+              },
+            },
+          ],
+        }),
+      });
+    const api = new LiveGoogleAdsApi(
+      'dev-token',
+      undefined,
+      'v25',
+      fetchImpl as unknown as typeof fetch,
+    );
+    const provider = new LiveGoogleKeywordIdeasProvider(api);
+    const ideas = await provider.getKeywordIdeas(
+      ['ноутбук'],
+      ['RU-MOW'],
+      auth,
+    );
+    expect(ideas).toEqual([
+      {
+        phrase: 'купить ноутбук',
+        frequency: 100,
+        competition: 'LOW',
+        source: 'google_keyword_planner',
+      },
+    ]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse(
+      String((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body),
+    ) as { geoTargetConstants: string[] };
+    const secondBody = JSON.parse(
+      String((fetchImpl.mock.calls[1] as [string, RequestInit])[1].body),
+    ) as { geoTargetConstants: string[] };
+    expect(firstBody.geoTargetConstants).toEqual(['geoTargetConstants/2643']);
+    expect(secondBody.geoTargetConstants).toEqual([]);
   });
 
   it('falls back to seed phrases when Planner returns no usable metrics', async () => {

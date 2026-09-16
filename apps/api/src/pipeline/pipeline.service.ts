@@ -1,13 +1,9 @@
 import {
-
   BadRequestException,
-
+  ConflictException,
   Injectable,
-
   NotFoundException,
-
   OnModuleInit,
-
 } from '@nestjs/common';
 
 import {
@@ -87,6 +83,9 @@ const MAX_FULL_RUN_STEPS = 10;
 @Injectable()
 
 export class PipelineService implements OnModuleInit {
+
+  /** In-process gate: concurrent HTTP runs on the same project corrupt semantic clusters. */
+  private readonly projectRunLocks = new Set<string>();
 
   constructor(
 
@@ -316,6 +315,14 @@ export class PipelineService implements OnModuleInit {
 
   async run(organizationId: string, projectId: string) {
 
+    if (this.projectRunLocks.has(projectId)) {
+      throw new ConflictException('Pipeline already running for this project');
+    }
+
+    this.projectRunLocks.add(projectId);
+
+    try {
+
     await this.requireProject(organizationId, projectId);
 
     await this.ai.requireReady(organizationId);
@@ -323,6 +330,10 @@ export class PipelineService implements OnModuleInit {
     const initial = planFullRunToDraft(await this.loadFacts(projectId));
 
     if (!initial.runnable) {
+
+      if (initial.blockedReason === 'Шаг уже выполняется') {
+        throw new ConflictException(initial.blockedReason);
+      }
 
       throw new BadRequestException(
 
@@ -357,6 +368,12 @@ export class PipelineService implements OnModuleInit {
     await this.alerts.clearStalePipelineFailures(projectId);
 
     return this.toDto(projectId, facts, planPipeline(facts));
+
+    } finally {
+
+      this.projectRunLocks.delete(projectId);
+
+    }
 
   }
 

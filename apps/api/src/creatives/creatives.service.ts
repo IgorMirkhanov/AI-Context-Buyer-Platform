@@ -191,17 +191,25 @@ export class CreativesService {
 
   async getResult(organizationId: string, projectId: string) {
     await this.requireProject(organizationId, projectId);
-    const [creatives, issues, clusters, copyTask, validationTask] =
+    /** Cap UI payload — MediaPeace-scale projects can exceed 10k rows and block the event loop. */
+    const CREATIVE_UI_LIMIT = 500;
+    const [totalCreatives, creatives, issues, clusters, copyTask, validationTask] =
       await Promise.all([
+        this.prisma.adCreative.count({ where: { projectId } }),
         this.prisma.adCreative.findMany({
           where: { projectId },
           orderBy: [{ clusterId: 'asc' }, { abGroup: 'asc' }, { type: 'asc' }],
+          take: CREATIVE_UI_LIMIT,
         }),
         this.prisma.validationIssue.findMany({
           where: { projectId },
           orderBy: { createdAt: 'asc' },
+          take: 2000,
         }),
-        this.prisma.semanticCluster.findMany({ where: { projectId } }),
+        this.prisma.semanticCluster.findMany({
+          where: { projectId },
+          select: { id: true, name: true },
+        }),
         this.prisma.agentTask.findFirst({
           where: { projectId, agentType: AgentType.copywriting },
           orderBy: { startedAt: 'desc' },
@@ -212,16 +220,24 @@ export class CreativesService {
         }),
       ]);
     const clusterName = new Map(clusters.map((item) => [item.id, item.name]));
+    const issuesByCreative = new Map<string, typeof issues>();
+    for (const issue of issues) {
+      if (!issue.creativeId) continue;
+      const list = issuesByCreative.get(issue.creativeId);
+      if (list) list.push(issue);
+      else issuesByCreative.set(issue.creativeId, [issue]);
+    }
+    const editedCount = await this.prisma.adCreative.count({
+      where: { projectId, status: CreativeStatus.edited },
+    });
     return {
       task: copyTask,
       validationTask,
       llmMode: parseCopywritingLlmMode(copyTask?.outputRef),
       quality: {
         creatives: agentAcceptance({
-          total: creatives.length,
-          edited: creatives.filter(
-            (item) => item.status === CreativeStatus.edited,
-          ).length,
+          total: totalCreatives,
+          edited: editedCount,
         }),
         clusters: clusterEditAcceptance(
           creatives.map((item) => ({
@@ -230,10 +246,12 @@ export class CreativesService {
           })),
         ),
       },
+      truncated: totalCreatives > creatives.length,
+      totalCreatives,
       creatives: creatives.map((item) => ({
         ...item,
         clusterName: clusterName.get(item.clusterId) ?? '',
-        issues: issues.filter((issue) => issue.creativeId === item.id),
+        issues: issuesByCreative.get(item.id) ?? [],
       })),
       issues,
     };

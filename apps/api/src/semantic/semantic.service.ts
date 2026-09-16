@@ -20,6 +20,7 @@ import {
   SemanticCoreValidationError,
   isCommercialKeyword,
   isSafeNegativePhrase,
+  nicheCoreTokens,
   sanitizeBriefNegatives,
 } from '@context-buyer/agents';
 import { PlatformApiError } from '@context-buyer/connectors';
@@ -212,11 +213,29 @@ export class SemanticService {
 
   async getResult(organizationId: string, projectId: string) {
     await this.requireProject(organizationId, projectId);
+    /** Cap keywords per cluster for UI — full export still available via /semantic/export. */
+    const KEYWORDS_PER_CLUSTER_UI = 12;
+    const MAX_CLUSTERS_UI = 15;
     const clusters = await this.prisma.semanticCluster.findMany({
       where: { projectId },
-      include: { keywords: { orderBy: { frequency: 'desc' } } },
+      include: {
+        keywords: {
+          orderBy: { frequency: 'desc' },
+          take: KEYWORDS_PER_CLUSTER_UI * 2,
+        },
+        _count: { select: { keywords: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
+    // Prefer richer clusters in the UI so 200+ micro-clusters do not drown the Plan.
+    const ranked = [...clusters]
+      .sort((a, b) => {
+        const score = (c: (typeof clusters)[number]) =>
+          c.keywords.reduce((sum, kw) => sum + (kw.frequency ?? 0), 0) +
+          c._count.keywords;
+        return score(b) - score(a);
+      })
+      .slice(0, MAX_CLUSTERS_UI);
     const lastTask = await this.prisma.agentTask.findFirst({
       where: { projectId, agentType: AgentType.semantic },
       orderBy: { startedAt: 'desc' },
@@ -224,6 +243,7 @@ export class SemanticService {
     const negativeSuggestions = await this.prisma.semanticNegativeSuggestion.findMany({
       where: { projectId },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
     return {
       task: lastTask,
@@ -236,13 +256,18 @@ export class SemanticService {
         createdAt: item.createdAt,
         resolvedAt: item.resolvedAt,
       })),
-      clusters: clusters.map((cluster) => ({
-        id: cluster.id,
-        name: cluster.name,
-        category: cluster.category,
-        keywords: cluster.keywords
-          .filter((item) => !item.isNegative)
-          .map((item) => ({
+      clusters: ranked.map((cluster) => {
+        const positives = cluster.keywords.filter((item) => !item.isNegative);
+        const negatives = cluster.keywords.filter((item) => item.isNegative);
+        return {
+          id: cluster.id,
+          name: cluster.name,
+          category: cluster.category,
+          keywordTotal: cluster._count.keywords,
+          truncated:
+            clusters.length > MAX_CLUSTERS_UI ||
+            cluster._count.keywords > cluster.keywords.length,
+          keywords: positives.slice(0, KEYWORDS_PER_CLUSTER_UI).map((item) => ({
             phrase: item.phrase,
             intent: item.intent,
             frequency: item.frequency,
@@ -252,10 +277,13 @@ export class SemanticService {
               item.intent as 'hot' | 'warm' | 'navigational',
             ),
           })),
-        negativeKeywords: cluster.keywords
-          .filter((item) => item.isNegative)
-          .map((item) => item.phrase),
-      })),
+          negativeKeywords: negatives.slice(0, 15).map((item) => item.phrase),
+        };
+      }),
+      totals: {
+        clustersStored: clusters.length,
+        clustersShown: ranked.length,
+      },
     };
   }
 
@@ -383,6 +411,14 @@ export class SemanticService {
     const protectedPhrases = [
       ...payload.marketing.usp,
       payload.marketing.product_description ?? '',
+      project?.name ?? '',
+      ...nicheCoreTokens({
+        geo: payload.project.geo ?? [],
+        usp: [...(payload.marketing.usp ?? []), project?.name ?? ''],
+        target_audience: [],
+        global_negative_keywords: [],
+        product_description: payload.marketing.product_description ?? '',
+      }),
     ];
     const existing = new Set(
       payload.exclusions.global_negative_keywords.map((item) =>
@@ -472,7 +508,7 @@ export class SemanticService {
       const cleaned = sanitizeBriefNegatives(
         payload.exclusions.global_negative_keywords,
         {
-          usp: payload.marketing.usp,
+          usp: [...payload.marketing.usp, project?.name ?? ''],
           product_description: payload.marketing.product_description,
           forbidden_phrases: payload.marketing.forbidden_phrases,
         },
@@ -485,6 +521,14 @@ export class SemanticService {
     const protectedPhrases = [
       ...payload.marketing.usp,
       payload.marketing.product_description ?? '',
+      project?.name ?? '',
+      ...nicheCoreTokens({
+        geo: payload.project.geo ?? [],
+        usp: [...(payload.marketing.usp ?? []), project?.name ?? ''],
+        target_audience: [],
+        global_negative_keywords: [],
+        product_description: payload.marketing.product_description ?? '',
+      }),
     ];
     const existing = new Set(
       payload.exclusions.global_negative_keywords.map((item) =>
@@ -510,7 +554,7 @@ export class SemanticService {
     const cleanedExisting = sanitizeBriefNegatives(
       payload.exclusions.global_negative_keywords,
       {
-        usp: payload.marketing.usp,
+        usp: [...payload.marketing.usp, project?.name ?? ''],
         product_description: payload.marketing.product_description,
         forbidden_phrases: payload.marketing.forbidden_phrases,
       },
@@ -707,7 +751,13 @@ export class SemanticService {
       await tx.semanticCluster.deleteMany({ where: { projectId } });
       await tx.keywordEmbedding.deleteMany({ where: { projectId } });
 
+      const seenNames = new Set<string>();
       for (const cluster of core.clusters) {
+        const nameKey = cluster.cluster_name.trim().toLowerCase();
+        if (seenNames.has(nameKey)) {
+          continue;
+        }
+        seenNames.add(nameKey);
         const created = await tx.semanticCluster.create({
           data: {
             projectId,

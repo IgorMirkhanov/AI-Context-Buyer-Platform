@@ -200,7 +200,7 @@ export function AppShell({
                 ) : null}
                 <StatusBadge value={project.status} />
                 {subtitle ? (
-                  <span className="hidden text-[var(--fg-muted)] sm:inline">
+                  <span className="inline-flex max-w-full flex-wrap items-center gap-2 text-[var(--fg-muted)]">
                     {subtitle}
                   </span>
                 ) : null}
